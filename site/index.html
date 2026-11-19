@@ -94,6 +94,19 @@
   .servidor .botoes .btn { flex: 1; }
   .vazio { text-align: center; padding: 48px 20px; color: var(--fraco); }
   .vazio h3 { color: var(--texto); margin: 0 0 8px; }
+  .frases-cartao { margin-top: 36px; }
+  .frases-form { display: flex; gap: 10px; margin: 14px 0 6px; }
+  .frases-form input { flex: 1; min-width: 0; background: var(--fundo); border: 1px solid var(--borda); color: var(--texto);
+                       border-radius: 12px; padding: 11px 14px; font: 15px Inter, system-ui, sans-serif; outline: none; }
+  .frases-form input:focus { border-color: var(--destaque); }
+  .frases-lista { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .frase { display: inline-flex; align-items: center; gap: 4px; background: var(--sec); border: 1px solid var(--borda);
+           border-radius: 999px; padding: 6px 6px 6px 14px; font-size: 14px; max-width: 100%; }
+  .frase span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .frase button { border: 0; background: transparent; color: var(--fraco); cursor: pointer; width: 26px; height: 26px;
+                  border-radius: 50%; font-size: 16px; line-height: 1; flex: none; }
+  .frase button:hover { background: #3a2226; color: #ff7b7b; }
+  .erro-texto { color: #ff7b7b; font-size: 13px; min-height: 18px; }
   .esqueleto { height: 150px; border-radius: 16px; background: linear-gradient(90deg, var(--cartao) 0%, #20242c 50%, var(--cartao) 100%);
                background-size: 200% 100%; animation: brilho 1.2s infinite; border: 1px solid var(--borda); }
   @keyframes brilho { to { background-position: -200% 0; } }
@@ -212,6 +225,18 @@
       <a class="btn pri" id="btnConvite" target="_blank" rel="noopener">+ Adicionar bot</a>
     </div>
     <div class="servidores" id="servidores"></div>
+
+    <div class="cartao frases-cartao">
+      <h2>Frases procuradas</h2>
+      <div class="detalhe">Quando uma destas aparecer no chat do Roblox, você recebe o alerta. Vale para todos os seus PCs
+        (eles atualizam sozinhos em até 1 minuto). Maiúsculas e pontuação não importam.</div>
+      <form class="frases-form" id="formFrase">
+        <input id="novaFrase" maxlength="120" placeholder="Ex.: Something feels off" autocomplete="off">
+        <button class="btn pri" type="submit" id="btnAddFrase">+ Adicionar</button>
+      </form>
+      <div class="erro-texto" id="erroFrase"></div>
+      <div class="frases-lista" id="listaFrases"></div>
+    </div>
   </section>
 </main>
 
@@ -306,6 +331,7 @@
 
   async function carregar() {
     mostrarPainel();
+    carregarFrases();
     const lista = $("servidores");
     lista.replaceChildren(...[1, 2, 3].map(() => el("div", { class: "esqueleto" })));
     try {
@@ -333,6 +359,43 @@
         el("h3", {}, "Não consegui carregar"), el("p", {}, e.message),
         el("button", { class: "btn", onclick: carregar }, "Tentar de novo")));
     }
+  }
+
+  async function carregarFrases() {
+    const lista = $("listaFrases");
+    try {
+      const { frases } = await chamar("frases");
+      if (!frases.length) {
+        lista.replaceChildren(el("div", { class: "detalhe" }, "Nenhuma frase. Adicione uma acima para o PC começar a procurar."));
+        return;
+      }
+      lista.replaceChildren(...frases.map((f) => el("div", { class: "frase", title: f.texto },
+        el("span", {}, f.texto),
+        el("button", { "aria-label": `Remover ${f.texto}`, title: "Remover", onclick: () => removerFrase(f) }, "✕"))));
+    } catch (e) {
+      $("erroFrase").textContent = e.message;
+    }
+  }
+
+  async function adicionarFrase(ev) {
+    ev.preventDefault();
+    const texto = $("novaFrase").value.trim();
+    if (texto.length < 3) { $("erroFrase").textContent = "A frase precisa ter pelo menos 3 letras."; return; }
+    $("btnAddFrase").disabled = true;
+    $("erroFrase").textContent = "";
+    try {
+      await chamar("frase_add", { texto });
+      $("novaFrase").value = "";
+      aviso(`Frase adicionada: ${texto}`);
+      await carregarFrases();
+    } catch (e) { $("erroFrase").textContent = e.message; }
+    $("btnAddFrase").disabled = false;
+  }
+
+  async function removerFrase(f) {
+    if (!confirm(`Parar de procurar "${f.texto}"?`)) return;
+    try { await chamar("frase_del", { id: f.id }); await carregarFrases(); }
+    catch (e) { aviso(e.message, true); }
   }
 
   function cartaoServidor(g) {
@@ -427,6 +490,7 @@
   $("btnEntrarTopo").addEventListener("click", entrar);
   $("btnSair").addEventListener("click", sair);
   $("btnAtualizar").addEventListener("click", carregar);
+  $("formFrase").addEventListener("submit", adicionarFrase);
   $("btnFecharModal").addEventListener("click", fecharModal);
   $("fundoModal").addEventListener("click", (e) => { if (e.target === $("fundoModal")) fecharModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharModal(); });

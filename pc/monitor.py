@@ -237,6 +237,24 @@ def chamar_discord(acao, com_chave=True, **extra):
     return r
 
 
+# ----------------------------- frases (na nuvem) ---------------------------
+def sincronizar_frases():
+    """Busca as frases da conta na nuvem (editaveis no app, no site e aqui). True = mudaram."""
+    global MENSAGENS
+    if not ler_config().get("chave_pc"):
+        return False
+    r = chamar_discord("frases")
+    novas = {str(i + 1): f["texto"] for i, f in enumerate(r.get("frases") or [])}
+    if novas == MENSAGENS:
+        return False
+    MENSAGENS = novas
+    dados = ler_config()
+    opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
+    opcoes["mensagens"] = novas          # copia local, para funcionar mesmo sem internet
+    salvar_config(opcoes=opcoes)
+    return True
+
+
 # ----------------------------- conectar ------------------------------------
 def conectar_discord(cancelar=None):
     """Liga este PC a conta pelo Discord (abre o navegador). Devolve (ok, mensagem)."""
@@ -659,6 +677,8 @@ class Monitor:
                 self.status = "Parado: conecte com o Discord"
             elif not cfg.get("regiao"):
                 self.status = "Parado: escolha a área da tela"
+            elif not MENSAGENS:
+                self.status = "Parado: nenhuma frase cadastrada"
             else:
                 self.status = "Preparando o leitor de texto..."
                 nome_leitor, ler = criar_leitor()
@@ -876,6 +896,7 @@ class App:
         self.root.after(200, self._processar_filas)
         self.root.after(300, self._atualizar_status)
         self.root.after(15_000, self._verificar_atualizacao)
+        self.root.after(2_000, self._sincronizar_periodico)
         log("Alerta Roblox aberto.")
 
     # --- montagem da janela ---
@@ -909,7 +930,7 @@ class App:
         acoes = ctk.CTkFrame(r, fg_color="transparent")
         acoes.grid(row=2, column=0, sticky="ew", padx=22, pady=(8, 4))
         botao(acoes, "Enviar teste", self.enviar_teste, "pri", width=140).pack(side="left")
-        botao(acoes, "Editar frases", self.editar_opcoes, width=130).pack(side="left", padx=8)
+        botao(acoes, "Frases", self.abrir_frases, width=110).pack(side="left", padx=8)
         botao(acoes, "Jogador e servidor",
               lambda: threading.Thread(target=mostrar_servidor, daemon=True).start(), width=160).pack(side="left")
         self.chave_debug = ctk.CTkSwitch(acoes, text="Ver leitura", font=fonte(12), text_color=COR["fraco"],
@@ -1023,10 +1044,35 @@ class App:
             pystray.MenuItem("Abrir", lambda: self.na_janela(self.mostrar), default=True),
             pystray.MenuItem("Enviar teste", lambda: self.na_janela(self.enviar_teste)),
             pystray.MenuItem("Escolher area da tela", lambda: self.na_janela(self.escolher_area)),
+            pystray.MenuItem("Frases", lambda: self.na_janela(self.abrir_frases)),
+            pystray.MenuItem("Opcoes avancadas", lambda: self.na_janela(self.editar_opcoes)),
             pystray.MenuItem("Sair", lambda: self.na_janela(self.sair)),
         )
         self.icone_bandeja = pystray.Icon("AlertaRoblox", imagem_icone(), "Alerta Roblox", menu)
         threading.Thread(target=self.icone_bandeja.run, daemon=True).start()
+
+    # --- frases ---
+    def _sincronizar_periodico(self):
+        self.root.after(60_000, self._sincronizar_periodico)   # de novo em 1 minuto
+        self.sincronizar_frases()
+
+    def sincronizar_frases(self, depois=None):
+        def fim(mudou, erro):
+            if mudou:
+                log("Frases atualizadas:", " | ".join(MENSAGENS.values()) or "(nenhuma)")
+                self.monitor.reiniciar()
+            if depois:
+                depois()
+        self.em_segundo_plano(sincronizar_frases, fim)
+
+    def abrir_frases(self):
+        if not ler_config().get("chave_pc"):
+            dialogo(self.root, "Alerta Roblox", "Primeiro conecte com o Discord (passo 1).", tipo="aviso")
+            return
+        if getattr(self, "janela_frases", None) and self.janela_frases.win.winfo_exists():
+            trazer_para_frente(self.janela_frases.win)
+            return
+        self.janela_frases = JanelaFrases(self)
 
     # --- atualizacao automatica ---
     def _verificar_atualizacao(self):
@@ -1111,6 +1157,7 @@ class App:
             if ok:
                 dialogo(self.root, "Conectado", msg + "\n\nAgora escolha a área da tela e o canal do Discord.")
                 self.monitor.reiniciar()
+                self.sincronizar_frases()
             else:
                 dialogo(self.root, "Não conectou", msg, tipo="aviso")
         self.em_segundo_plano(conectar_discord, fim)
@@ -1157,6 +1204,85 @@ class App:
             trazer_para_frente(self.painel.win)
             return
         self.painel = PainelDiscord(self)
+
+
+class JanelaFrases:
+    """Adicionar e remover as frases procuradas (ficam na conta, valem para todos os PCs)."""
+
+    def __init__(self, app):
+        self.app = app
+        self.win = ctk.CTkToplevel(app.root)
+        self.win.title("Frases procuradas")
+        self.win.geometry("480x520")
+        self.win.configure(fg_color=COR["fundo"])
+        self.win.transient(app.root)
+        ctk.CTkLabel(self.win, text="Frases procuradas", text_color=COR["texto"], font=fonte(20, "bold")).pack(
+            anchor="w", padx=20, pady=(18, 0))
+        ctk.CTkLabel(self.win, text="Quando uma destas aparecer no chat do jogo, você recebe o alerta. "
+                                    "Ficam na sua conta: também dá para mudar no app e no site.",
+                     text_color=COR["fraco"], font=fonte(12), wraplength=440, justify="left").pack(
+            anchor="w", padx=20, pady=(4, 12))
+        linha = ctk.CTkFrame(self.win, fg_color="transparent")
+        linha.pack(fill="x", padx=20)
+        self.entrada = ctk.CTkEntry(linha, placeholder_text="Ex.: Something feels off", height=38,
+                                    corner_radius=10, fg_color=COR["cartao"], border_color=COR["borda"],
+                                    text_color=COR["texto"], font=fonte(13))
+        self.entrada.pack(side="left", fill="x", expand=True)
+        self.entrada.bind("<Return>", lambda e: self.adicionar())
+        self.btn_add = botao(linha, "+ Adicionar", self.adicionar, "pri", width=120)
+        self.btn_add.pack(side="left", padx=(8, 0))
+        self.aviso = ctk.CTkLabel(self.win, text="", text_color="#ff6b6b", font=fonte(12), anchor="w")
+        self.aviso.pack(fill="x", padx=20, pady=(4, 0))
+        self.lista = ctk.CTkScrollableFrame(self.win, fg_color="transparent")
+        self.lista.pack(fill="both", expand=True, padx=14, pady=(4, 16))
+        trazer_para_frente(self.win)
+        self.carregar()
+
+    def carregar(self):
+        self.app.em_segundo_plano(lambda: chamar_discord("frases"), self.mostrar)
+
+    def mostrar(self, r, erro):
+        if not self.win.winfo_exists():
+            return
+        for w in self.lista.winfo_children():
+            w.destroy()
+        if erro:
+            self.aviso.configure(text=f"Erro: {erro}")
+            return
+        frases = r.get("frases") or []
+        if not frases:
+            ctk.CTkLabel(self.lista, text="Nenhuma frase. Adicione uma acima.", text_color=COR["fraco"],
+                         font=fonte(13)).pack(pady=20)
+        for f in frases:
+            c = cartao(self.lista)
+            c.pack(fill="x", pady=4, padx=4)
+            ctk.CTkLabel(c, text=f["texto"], text_color=COR["texto"], font=fonte(13), anchor="w",
+                         wraplength=300, justify="left").pack(side="left", fill="x", expand=True, padx=14, pady=12)
+            botao(c, "Remover", lambda f=f: self.remover(f), "perigo", width=90, height=32).pack(side="right", padx=10)
+
+    def depois_de_mudar(self, r, erro):
+        self.btn_add.configure(state="normal")
+        if erro:
+            self.aviso.configure(text=str(erro))
+            return
+        self.aviso.configure(text="")
+        self.carregar()
+        self.app.sincronizar_frases()
+
+    def adicionar(self):
+        texto = self.entrada.get().strip()
+        if len(texto) < 3:
+            self.aviso.configure(text="A frase precisa ter pelo menos 3 letras.")
+            return
+        self.entrada.delete(0, "end")
+        self.btn_add.configure(state="disabled")
+        self.app.em_segundo_plano(lambda: chamar_discord("frase_add", texto=texto), self.depois_de_mudar)
+
+    def remover(self, f):
+        if dialogo(self.win, "Frases", f"Parar de procurar \"{f['texto']}\"?", ("Cancelar", "Remover"),
+                   "aviso") != "Remover":
+            return
+        self.app.em_segundo_plano(lambda: chamar_discord("frase_del", id=f["id"]), self.depois_de_mudar)
 
 
 def baixar_imagem(url, tamanho=40):

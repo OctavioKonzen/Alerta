@@ -79,7 +79,7 @@ O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInst
    - **Escolher área da tela**: deixe o jogo visível e arraste sobre a área das mensagens.
    - **Canal do Discord**: mostra os servidores onde o bot está; se você for administrador, escolha o canal dos alertas.
    - **Enviar teste**: deve chegar uma notificação no celular (e no canal do Discord).
-   - **Editar frases e opções**: muda as frases procuradas, o nome do jogador e outras opções.
+   - **Frases**: adiciona ou remove as frases procuradas (também dá no app, aba Frases, e no site). Elas ficam na conta e valem para todos os PCs.
 4. Fechar a janela não para o alerta: ele fica com um ícone perto do relógio do Windows. Para sair, clique com o botão direito no ícone e escolha **Sair**.
 
 ### No PC (Windows) – sem instalador (Python)

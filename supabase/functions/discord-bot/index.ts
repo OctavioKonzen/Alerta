@@ -205,6 +205,25 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     return { url: urlLogin(estado, "identify guilds") };
   }
 
+  // Frases procuradas pelo PC (ficam na conta)
+  if (qual === "frases") {
+    await supa.rpc("garantir_frases", { p_user: userId });
+    const { data } = await supa.from("frases").select("id, texto")
+      .eq("user_id", userId).order("created_at").order("id");
+    return { frases: data ?? [] };
+  }
+  if (qual === "frase_add") {
+    const texto = String(corpo.texto ?? "").trim();
+    if (texto.length < 3 || texto.length > 120) throw new Error("a frase precisa ter de 3 a 120 letras");
+    const { error } = await supa.from("frases").insert({ user_id: userId, texto });
+    if (error) throw new Error(error.message.includes("limite") ? "limite de 30 frases por conta" : "nao consegui salvar a frase");
+    return { ok: true };
+  }
+  if (qual === "frase_del") {
+    await supa.from("frases").delete().eq("user_id", userId).eq("id", String(corpo.id));
+    return { ok: true };
+  }
+
   if (qual === "sair") {
     await supa.from("discord_canais").delete().eq("user_id", userId);
     await supa.from("discord_contas").delete().eq("user_id", userId);
@@ -466,7 +485,7 @@ Deno.serve(async (req) => {
     if (chavePc) {
       const dono = await donoDoPc(chavePc);
       if (!dono) return json({ erro: "chave do PC invalida, conecte o PC de novo" }, 401);
-      if (!["painel", "canais", "escolher", "remover"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
@@ -481,7 +500,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
