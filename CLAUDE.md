@@ -55,6 +55,8 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - **APK / .exe**: GitHub > Actions > "App Android (APK)" / "Instalador do PC (Windows)" > Run workflow. Uma tag `v*` gera os dois e anexa na Release.
 - O ambiente do Claude não tem rede para Supabase, npm ou pip: valide sintaxe localmente (py_compile; parser do TypeScript) e deixe os builds de verdade para o GitHub Actions.
 
+- **Sem assinatura digital** (o dono decidiu não pagar): o Smart App Control do Windows 11 bloqueia o .exe; o site e o README explicam como desativar. Se um dia assinar: SSL.com eSigner (aceita pessoa física do Brasil) ou Trusted Signing (Azure).
+
 ## Convenções
 - Textos de interface e mensagens em português. No `monitor.py`, a janela pode ter acentos; o que vai para o log/console fica sem acento.
 - Commits pequenos, em português, direto na `main` (o dono pediu para enviar direto).
