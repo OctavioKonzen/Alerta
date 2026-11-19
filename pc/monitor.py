@@ -71,7 +71,7 @@ LINK_SERVIDOR_PRIVADO = ""   # opcional: link do seu servidor privado (vai no al
 
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
 SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
-SUPABASE_ANON_KEY = "SUA_ANON_KEY"
+SUPABASE_ANON_KEY = "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz"
 FUNCAO_ALERTA = "smooth-responder"   # nome da Edge Function no Supabase
 # ---------------------------------------------------------------------------
 

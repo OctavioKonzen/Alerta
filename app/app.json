@@ -16,7 +16,7 @@
     ],
     "extra": {
       "supabaseUrl": "https://vtyxkowxnesclwtndbog.supabase.co",
-      "supabaseAnonKey": "SUA_ANON_KEY",
+      "supabaseAnonKey": "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz",
       "eas": { "projectId": "SEU_PROJECT_ID_DO_EXPO" }
     }
   }
