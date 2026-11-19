@@ -39,6 +39,10 @@ jobs:
             adb shell pidof com.octaviokonzen.alerta || echo "APP NAO ESTA RODANDO"
             echo "===== erros ====="
             grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|Exception|Error|com.octaviokonzen" logcat.txt | head -200 || true
+            if grep -qE "FATAL EXCEPTION|Cannot find native module|runtime not ready" logcat.txt; then
+              echo "::error::O app deu erro ao abrir (veja acima)"; exit 1
+            fi
+            echo "OK: o app abriu sem erro fatal"
 
       - uses: actions/upload-artifact@v4
         if: always()
