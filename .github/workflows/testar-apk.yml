@@ -1,0 +1,49 @@
+name: Testar APK no emulador
+
+# Instala o APK mais novo (Release "ultima") num Android virtual, abre o app
+# e mostra o registro de erros (logcat). Serve para descobrir por que o app fecha.
+# Manual: Actions > "Testar APK no emulador" > Run workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Liberar KVM (acelera o emulador)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Baixar o APK
+        run: curl -fL -o app.apk https://github.com/${{ github.repository }}/releases/download/ultima/AlertaRoblox.apk
+
+      - name: Abrir o app no emulador e coletar o logcat
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r app.apk
+            adb logcat -c
+            adb shell monkey -p com.octaviokonzen.alerta -c android.intent.category.LAUNCHER 1
+            sleep 25
+            adb logcat -d > logcat.txt || true
+            adb shell screencap -p /sdcard/tela.png && adb pull /sdcard/tela.png tela.png || true
+            echo "===== processo do app (vazio = fechou) ====="
+            adb shell pidof com.octaviokonzen.alerta || echo "APP NAO ESTA RODANDO"
+            echo "===== erros ====="
+            grep -E "FATAL EXCEPTION|AndroidRuntime|ReactNativeJS|Exception|Error|com.octaviokonzen" logcat.txt | head -200 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: resultado-emulador
+          path: |
+            logcat.txt
+            tela.png
