@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git -c push.negotiate=true push:*)",
+      "Bash(git pull:*)",
+      "Bash(git fetch:*)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Bash(npx expo:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh run:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Read(**/*firebase-adminsdk*.json)",
+      "Read(**/service-account*.json)"
+    ]
+  }
+}
