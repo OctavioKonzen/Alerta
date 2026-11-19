@@ -18,7 +18,11 @@ Uso:
     python monitor.py imagem foto.png -> testa a leitura em um print
     python monitor.py teste      -> manda um alerta de teste para o celular
     python monitor.py servidor   -> mostra o jogador e o servidor detectados
+    python monitor.py configurar -> edita frases e opcoes (config.json)
 Pare com Ctrl+C no terminal.
+
+Pelo instalador (AlertaRoblox-Setup.exe) esses comandos viram atalhos
+no Menu Iniciar. As configuracoes ficam em %APPDATA%\\AlertaRoblox.
 """
 import ctypes
 import getpass
@@ -70,9 +74,26 @@ SUPABASE_URL = "https://SEU-PROJETO.supabase.co"
 SUPABASE_ANON_KEY = "SUA_ANON_KEY"
 # ---------------------------------------------------------------------------
 
-PASTA = os.path.dirname(os.path.abspath(__file__))
+INSTALADO = getattr(sys, "frozen", False)   # True quando roda pelo .exe do instalador
+if INSTALADO or os.environ.get("APPDATA"):
+    PASTA = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "AlertaRoblox")
+else:
+    PASTA = os.path.dirname(os.path.abspath(__file__))
+os.makedirs(PASTA, exist_ok=True)
 CONFIG = os.path.join(PASTA, "config.json")
 USER_AGENT = "AlertaRoblox-PC/1.0"
+
+# Opcoes que o usuario pode mudar no config.json (comando "configurar")
+OPCOES = {
+    "mensagens": "MENSAGENS",
+    "limiar_texto": "LIMIAR_TEXTO",
+    "intervalo": "INTERVALO",
+    "cooldown": "COOLDOWN",
+    "zoom_ocr": "ZOOM_OCR",
+    "alerta_tela": "ALERTA_TELA",
+    "nome_jogador": "NOME_JOGADOR",
+    "link_servidor_privado": "LINK_SERVIDOR_PRIVADO",
+}
 
 try:  # evita problemas de escala (DPI) no Windows
     ctypes.windll.user32.SetProcessDPIAware()
@@ -98,7 +119,55 @@ def salvar_config(**novos):
     dados = ler_config()
     dados.update(novos)
     with open(CONFIG, "w", encoding="utf-8") as f:
-        json.dump(dados, f, indent=2)
+        json.dump(dados, f, indent=2, ensure_ascii=False)
+
+
+def carregar_opcoes():
+    """Aplica as opcoes do config.json e grava as que faltam (com o valor padrao)."""
+    dados = ler_config()
+    opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
+    mudou = False
+    for chave, var in OPCOES.items():
+        if chave in opcoes:
+            padrao = globals()[var]
+            valor = opcoes[chave]
+            if isinstance(padrao, bool):
+                ok = isinstance(valor, bool)
+            elif isinstance(padrao, (int, float)):
+                ok = isinstance(valor, (int, float)) and not isinstance(valor, bool) and valor > 0
+            else:
+                ok = isinstance(valor, type(padrao))
+            if ok:
+                globals()[var] = valor
+            else:
+                print(f"Aviso: valor invalido para '{chave}' no config.json, usando o padrao.")
+        else:
+            opcoes[chave] = globals()[var]
+            mudou = True
+    if mudou:
+        salvar_config(opcoes=opcoes)
+
+
+def configurar():
+    """Abre o config.json no Bloco de Notas para editar frases e opcoes."""
+    carregar_opcoes()
+    print("Arquivo de configuracao:", CONFIG)
+    print('Edite "mensagens" (frases procuradas) e as outras opcoes, salve e feche.')
+    print("Depois reabra o Alerta Roblox para valer.")
+    try:
+        subprocess.run(["notepad.exe", CONFIG])
+    except Exception:
+        try:
+            os.startfile(CONFIG)
+        except Exception:
+            print("Abra o arquivo acima em um editor de texto.")
+    try:
+        with open(CONFIG, encoding="utf-8") as f:
+            json.load(f)
+        print("Configuracao OK.")
+    except ValueError as erro:
+        print("ATENCAO: o arquivo ficou com erro de formato:", erro)
+        print("Confira virgulas e aspas, ou apague o arquivo para voltar ao padrao.")
 
 
 # ----------------------------- HTTP ----------------------------------------
@@ -540,6 +609,21 @@ def testar_imagem(caminho):
               "<- DETECTADA" if nota >= LIMIAR_TEXTO else "")
 
 
+def autoteste():
+    """Escreve uma frase numa imagem e confere se o leitor de texto le. 0 = ok."""
+    nome_leitor, ler = criar_leitor()
+    if ler is None:
+        print("FALHOU: nenhum leitor de texto")
+        return 1
+    img = np.zeros((80, 700, 3), dtype=np.uint8)
+    cv2.putText(img, "Something feels off", (10, 55), cv2.FONT_HERSHEY_SIMPLEX,
+                1.5, (255, 255, 255), 3)
+    texto = ler(preparar(img))
+    nota = similaridade(normalizar("Something feels off"), normalizar(texto))
+    print(f"Leitor: {nome_leitor} | leu: {texto!r} | nota {nota:.2f}")
+    return 0 if nota >= LIMIAR_TEXTO else 1
+
+
 def monitorar(debug=False):
     if not nuvem_configurada():
         return
@@ -605,7 +689,12 @@ if __name__ == "__main__":
     import traceback
     arg = sys.argv[1].lower() if len(sys.argv) > 1 else ""
     try:
-        if arg == "setup":
+        carregar_opcoes()
+        if arg == "autoteste":           # usado no build para checar o .exe
+            sys.exit(autoteste())
+        elif arg == "configurar":
+            configurar()
+        elif arg == "setup":
             setup()
         elif arg == "conectar":
             conectar()

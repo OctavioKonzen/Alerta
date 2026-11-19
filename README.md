@@ -62,10 +62,14 @@ npm run apk
 ```
 No fim, o EAS mostra um link para baixar o `.apk`.
 
-### 4. GitHub
-1. Edite `pc/monitor.py` e preencha `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
-2. Suba o repositório.
-3. Em **Releases > Draft a new release**, anexe o `.apk` e o `pc/monitor.py`.
+### 4. Instalador do PC (.exe) e Release no GitHub
+1. No repositório, abra **Settings > Secrets and variables > Actions > aba Variables** e crie:
+   - `SUPABASE_URL` = Project URL do passo 1.5
+   - `SUPABASE_ANON_KEY` = chave anon do passo 1.5
+2. Para testar o build: **Actions > Instalador do PC (Windows) > Run workflow**. Ao terminar, o `AlertaRoblox-Setup-x.y.z.exe` aparece em **Artifacts**.
+3. Para publicar: em **Releases > Draft a new release**, crie a tag `v1.0.0` e publique. O GitHub gera o instalador sozinho e anexa na Release. Depois anexe o `.apk` do passo 3 na mesma Release.
+
+O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInstaller, testa se a leitura de texto funciona e gera o instalador com Inno Setup.
 
 ---
 
@@ -76,7 +80,20 @@ No fim, o EAS mostra um link para baixar o `.apk`.
 2. Abra o app, toque em **Criar conta**, confirme o e-mail e entre.
 3. Permita as notificações.
 
-### No PC (Windows)
+### No PC (Windows) – pelo instalador (recomendado)
+1. Baixe o `AlertaRoblox-Setup-x.y.z.exe` em **Releases** e instale. Não precisa de Python nem de administrador.
+   Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações > Executar assim mesmo**. Isso acontece porque o instalador não tem assinatura digital paga.
+2. No fim da instalação, o app abre em **Conectar minha conta**: use o mesmo e-mail e senha do app.
+3. No Menu Iniciar, pasta **Alerta Roblox**:
+   - **2 - Escolher área da tela**: arraste sobre a área das mensagens no jogo.
+   - **3 - Enviar alerta de teste**: deve chegar uma notificação no celular.
+   - **Alerta Roblox**: começa a monitorar (deixe a janela aberta enquanto joga).
+   - **Editar frases e opções**: muda as frases procuradas, o nome do jogador e outras opções.
+   - **Ver jogador e servidor**: mostra o que foi detectado no Roblox.
+
+As configurações ficam em `%APPDATA%\AlertaRoblox\config.json`. Para recomeçar do zero, apague esse arquivo.
+
+### No PC (Windows) – sem instalador (Python)
 1. Instale o [Python](https://www.python.org/downloads/) marcando **Add Python to PATH**.
 2. No cmd, dentro da pasta do `monitor.py`:
    ```
@@ -88,7 +105,7 @@ No fim, o EAS mostra um link para baixar o `.apk`.
    ```
 3. Com o Roblox aberto, `python monitor.py servidor` mostra o jogador e o servidor que foram detectados.
 
-### Opções no topo do `monitor.py`
+### Opções (em "Editar frases e opções", ou no topo do `monitor.py`)
 - `MENSAGENS`: as frases procuradas.
 - `NOME_JOGADOR`: preencha se o nome não for detectado sozinho.
 - `LINK_SERVIDOR_PRIVADO`: se você joga em servidor privado, cole o link aqui. O link de Job ID não funciona para servidor privado.

@@ -1,0 +1,79 @@
+name: Instalador do PC (Windows)
+
+# Gera o AlertaRoblox-Setup.exe.
+# - Manual: aba Actions > "Instalador do PC (Windows)" > Run workflow
+#   (o .exe fica em "Artifacts" no fim da execucao)
+# - Release: crie uma tag v1.0.0 (ou uma Release com essa tag) e o .exe
+#   e anexado automaticamente na Release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Versao
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") { $v = $env:GITHUB_REF_NAME.TrimStart("v") }
+          else { $v = "0.0.$env:GITHUB_RUN_NUMBER" }
+          "APP_VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Colocar URL e chave do Supabase no monitor
+        env:
+          SB_URL: ${{ vars.SUPABASE_URL }}
+          SB_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        shell: pwsh
+        run: |
+          if (-not $env:SB_URL -or -not $env:SB_KEY) {
+            Write-Host "::warning::Defina as variaveis SUPABASE_URL e SUPABASE_ANON_KEY em Settings > Secrets and variables > Actions > Variables. Sem elas o instalador nao conecta na nuvem."
+            exit 0
+          }
+          python -c "import os,io;p='pc/monitor.py';t=io.open(p,encoding='utf-8').read();t=t.replace('https://SEU-PROJETO.supabase.co',os.environ['SB_URL'].rstrip('/')).replace('SUA_ANON_KEY',os.environ['SB_KEY']);io.open(p,'w',encoding='utf-8').write(t)"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r pc/requirements.txt pyinstaller
+
+      - name: Empacotar com PyInstaller
+        working-directory: pc
+        run: >
+          pyinstaller --noconfirm --clean --console
+          --name AlertaRoblox
+          --icon instalador/icone.ico
+          --collect-all rapidocr_onnxruntime
+          --collect-binaries onnxruntime
+          monitor.py
+
+      - name: Autoteste do .exe (leitura de texto)
+        working-directory: pc
+        run: dist\AlertaRoblox\AlertaRoblox.exe autoteste
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Gerar instalador
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" pc\instalador\AlertaRoblox.iss'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AlertaRoblox-Setup-${{ env.APP_VERSION }}
+          path: saida/*.exe
+
+      - name: Anexar na Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: saida/*.exe

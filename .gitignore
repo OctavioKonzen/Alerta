@@ -4,6 +4,12 @@ app/android/
 app/ios/
 *.apk
 *.aab
+# build do instalador
+pc/build/
+pc/dist/
+pc/*.spec
+saida/
+__pycache__/
 # chave do PC de cada jogador
 pc/config.json
 # chave secreta do Firebase (conta de servico) - NUNCA subir
