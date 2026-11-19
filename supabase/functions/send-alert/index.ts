@@ -141,11 +141,8 @@ async function enviarPush(userId: string, alertaId: number, alerta: Record<strin
 
   const titulo = alerta.teste ? "Teste do Alerta Roblox" : `🚨 ${alerta.frase ?? "Mensagem detectada"}`;
   const texto_ = [
-    alerta.mensagem,
-    alerta.jogador ? `Jogador: ${alerta.jogador}` : null,
-    alerta.mapa ? `Mapa: ${alerta.mapa}` : null,
-    alerta.codigo_servidor ? `Codigo do servidor: ${alerta.codigo_servidor}` : null,
-    alerta.job_id ? `Servidor: ${alerta.job_id}` : null,
+    resumo(alerta) ? `${alerta.frase ?? "Mensagem"} ${resumo(alerta)}` : null,
+    alerta.mensagem ? `Lido no chat: ${alerta.mensagem}` : null,
   ].filter(Boolean).join("\n") || "Abra o app para ver";
   const dados = { alerta_id: String(alertaId), link: alerta.link ?? "" };
 
@@ -162,6 +159,21 @@ async function enviarPush(userId: string, alertaId: number, alerta: Record<strin
   }
 }
 
+// "Something feels off no server ABC123 do jogador Fulano" (server e jogador configuraveis no PC)
+function servidorDo(a: Record<string, any>) {
+  return (a.codigo_servidor as string | null) || (a.job_id as string | null) || null;
+}
+function resumo(a: Record<string, any>, negrito = false) {
+  const b = (t: string) => (negrito ? `**${t.replace(/\*/g, "")}**` : t);
+  const partes = [];
+  const srv = servidorDo(a);
+  if (srv) partes.push(`no server ${b(srv)}`);
+  if (a.jogador) partes.push(`do jogador ${b(String(a.jogador))}`);
+  let texto = partes.join(" ");
+  if (a.mapa) texto += `${texto ? " · " : ""}Mapa: ${b(String(a.mapa))}`;
+  return texto;
+}
+
 // ---------- Discord (canais escolhidos no app, aba Discord) ----------
 async function enviarDiscord(userId: string, a: Record<string, unknown>) {
   const token = Deno.env.get("DISCORD_BOT_TOKEN")?.trim();
@@ -174,16 +186,16 @@ async function enviarDiscord(userId: string, a: Record<string, unknown>) {
   if (!canais?.length) return 0;
 
   const campos = [
-    a.jogador ? { name: "Jogador", value: String(a.jogador), inline: true } : null,
-    a.mapa ? { name: "Mapa", value: String(a.mapa), inline: true } : null,
-    a.codigo_servidor ? { name: "Codigo do servidor", value: "`" + String(a.codigo_servidor) + "`", inline: false } : null,
-    a.job_id ? { name: "Servidor (Job ID)", value: "`" + String(a.job_id) + "`", inline: false } : null,
+    a.mensagem ? { name: "Lido no chat", value: String(a.mensagem).slice(0, 1000), inline: false } : null,
+    a.codigo_servidor && a.job_id ? { name: "Job ID", value: "`" + String(a.job_id) + "`", inline: false } : null,
   ].filter(Boolean);
+  const frase = String(a.frase ?? "Mensagem detectada").replace(/\*/g, "");
   const mensagem = {
     allowed_mentions: { parse: [] },
     embeds: [{
-      title: a.teste ? "Teste do Alerta Roblox" : `🚨 ${a.frase ?? "Mensagem detectada"}`,
-      description: (a.mensagem as string | null) ?? undefined,
+      title: a.teste ? "Teste do Alerta Roblox" : `🚨 ${frase}`,
+      description: a.teste ? (resumo(a, true) || undefined)
+        : `**${frase}** ${resumo(a, true)}`.trim(),
       color: a.teste ? 0x8b93a3 : 0xe53935,
       fields: campos,
       timestamp: new Date().toISOString(),
