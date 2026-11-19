@@ -57,6 +57,7 @@ jobs:
           --collect-all rapidocr_onnxruntime
           --collect-binaries onnxruntime
           --collect-submodules pystray
+          --collect-all customtkinter
           monitor.py
 
       # PC zerado pode nao ter o Visual C++ (o leitor de texto precisa dele).

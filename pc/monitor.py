@@ -39,8 +39,9 @@ import urllib.error
 import urllib.request
 import webbrowser
 from difflib import SequenceMatcher
-from tkinter import messagebox, ttk
 
+
+import customtkinter as ctk
 import cv2
 import mss
 import numpy as np
@@ -649,12 +650,12 @@ class Monitor:
             if not cfg.get("chave_pc"):
                 self.status = "Parado: conecte com o Discord"
             elif not cfg.get("regiao"):
-                self.status = "Parado: escolha a area da tela"
+                self.status = "Parado: escolha a área da tela"
             else:
                 self.status = "Preparando o leitor de texto..."
                 nome_leitor, ler = criar_leitor()
                 if ler is None:
-                    self.status = "Erro: leitor de texto nao encontrado"
+                    self.status = "Erro: leitor de texto não encontrado"
                     log("Nenhum leitor de texto encontrado. Reinstale o Alerta Roblox.")
                     return None
                 log("Leitor de texto:", nome_leitor)
@@ -713,6 +714,15 @@ class Monitor:
 
 
 # ----------------------------- janela --------------------------------------
+# Interface moderna (CustomTkinter), com as cores do app do celular.
+COR = {
+    "fundo": "#0f1115", "cartao": "#1a1d24", "borda": "#2a2f3a", "texto": "#f2f4f8",
+    "fraco": "#8b93a3", "destaque": "#E53935", "destaque2": "#c62828",
+    "ok": "#43A047", "atencao": "#F9A825", "sec": "#262a33", "sec2": "#323743",
+}
+FONTE = "Segoe UI"
+
+
 def caminho_recurso(nome):
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     for p in (os.path.join(base, nome), os.path.join(base, "instalador", nome)):
@@ -737,15 +747,78 @@ def imagem_icone():
     return img
 
 
+def fonte(tamanho=13, peso="normal"):
+    return ctk.CTkFont(family=FONTE, size=tamanho, weight=peso)
+
+
+def botao(pai, texto, comando, tipo="sec", **kw):
+    cores = {
+        "pri": (COR["destaque"], COR["destaque2"], "#ffffff"),
+        "sec": (COR["sec"], COR["sec2"], COR["texto"]),
+        "perigo": (COR["sec"], "#3a2226", "#ff6b6b"),
+    }[tipo]
+    return ctk.CTkButton(pai, text=texto, command=comando, fg_color=cores[0], hover_color=cores[1],
+                         text_color=cores[2], corner_radius=10, height=kw.pop("height", 38),
+                         font=fonte(13, "bold"), **kw)
+
+
+def cartao(pai, **kw):
+    return ctk.CTkFrame(pai, fg_color=COR["cartao"], corner_radius=14,
+                        border_width=1, border_color=COR["borda"], **kw)
+
+
+def trazer_para_frente(janela):
+    """CTkToplevel as vezes abre atras da janela principal no Windows."""
+    def _f():
+        try:
+            janela.lift()
+            janela.focus_force()
+            janela.attributes("-topmost", True)
+            janela.after(300, lambda: janela.attributes("-topmost", False))
+        except Exception:
+            pass
+    janela.after(150, _f)
+
+
+def dialogo(pai, titulo, texto, botoes=("OK",), tipo="info"):
+    """Janelinha de aviso no mesmo estilo. Devolve o texto do botao clicado (ou None)."""
+    win = ctk.CTkToplevel(pai)
+    win.title(titulo)
+    win.configure(fg_color=COR["fundo"])
+    win.resizable(False, False)
+    resultado = {"v": None}
+    cor = {"info": COR["ok"], "aviso": COR["atencao"], "erro": COR["destaque"]}[tipo]
+    simbolo = {"info": "✓", "aviso": "!", "erro": "✕"}[tipo]
+    linha = ctk.CTkFrame(win, fg_color="transparent")
+    linha.pack(padx=22, pady=(22, 10), fill="x")
+    ctk.CTkLabel(linha, text=simbolo, width=36, height=36, corner_radius=18, fg_color=cor,
+                 text_color="#ffffff", font=fonte(16, "bold")).pack(side="left", anchor="n")
+    ctk.CTkLabel(linha, text=texto, wraplength=330, justify="left", text_color=COR["texto"],
+                 font=fonte(13)).pack(side="left", padx=(14, 0))
+    fila = ctk.CTkFrame(win, fg_color="transparent")
+    fila.pack(padx=22, pady=(6, 20), fill="x")
+    for i, b in enumerate(reversed(botoes)):
+        def clicar(b=b):
+            resultado["v"] = b
+            win.destroy()
+        botao(fila, b, clicar, "pri" if i == 0 else "sec", width=110).pack(side="right", padx=(8, 0))
+    win.transient(pai)
+    trazer_para_frente(win)
+    win.after(200, win.grab_set)
+    pai.wait_window(win)
+    return resultado["v"]
+
+
 class App:
     def __init__(self):
         global _fila_log
         _fila_log = queue.Queue()
         self.acoes = queue.Queue()      # funcoes para rodar na janela (vindas de outras threads)
-        self.root = tk.Tk()
+        ctk.set_appearance_mode("dark")
+        self.root = ctk.CTk(fg_color=COR["fundo"])
         self.root.title("Alerta Roblox")
-        self.root.geometry("560x520")
-        self.root.minsize(460, 420)
+        self.root.geometry("760x620")
+        self.root.minsize(640, 560)
         ico = caminho_recurso("icone.ico")
         if ico:
             try:
@@ -760,57 +833,87 @@ class App:
         self._iniciar_bandeja()
         self.monitor.iniciar()
         self.root.after(200, self._processar_filas)
-        self.root.after(500, self._atualizar_status)
+        self.root.after(300, self._atualizar_status)
         log("Alerta Roblox aberto.")
 
     # --- montagem da janela ---
     def _montar(self):
         r = self.root
-        topo = ttk.Frame(r, padding=12)
-        topo.pack(fill="x")
-        self.lbl_conta = ttk.Label(topo, font=("Segoe UI", 10, "bold"))
-        self.lbl_conta.grid(row=0, column=0, sticky="w")
-        self.lbl_area = ttk.Label(topo)
-        self.lbl_area.grid(row=1, column=0, sticky="w", pady=(2, 0))
-        self.lbl_status = ttk.Label(topo)
-        self.lbl_status.grid(row=2, column=0, sticky="w", pady=(2, 0))
+        r.grid_columnconfigure(0, weight=1)
+        r.grid_rowconfigure(3, weight=1)
 
-        botoes = ttk.Frame(r, padding=(12, 0))
-        botoes.pack(fill="x")
-        itens = [
-            ("Conectar com Discord", self.conectar),
-            ("Escolher area da tela", self.escolher_area),
-            ("Canal do Discord", self.abrir_painel_discord),
-            ("Enviar teste", self.enviar_teste),
-            ("Editar frases e opcoes", self.editar_opcoes),
-            ("Ver jogador e servidor", lambda: threading.Thread(target=mostrar_servidor, daemon=True).start()),
-        ]
-        for i, (texto, cmd) in enumerate(itens):
-            b = ttk.Button(botoes, text=texto, command=cmd)
-            b.grid(row=i // 2, column=i % 2, sticky="ew", padx=3, pady=3)
-            if i == 0:
-                self.btn_conectar = b
-        botoes.columnconfigure(0, weight=1)
-        botoes.columnconfigure(1, weight=1)
+        # Cabecalho: nome + situacao
+        topo = ctk.CTkFrame(r, fg_color="transparent")
+        topo.grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 6))
+        topo.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(topo, text="●", text_color=COR["destaque"], font=fonte(26, "bold")).grid(row=0, column=0, rowspan=2, padx=(0, 10))
+        ctk.CTkLabel(topo, text="Alerta Roblox", text_color=COR["texto"], font=fonte(22, "bold")).grid(row=0, column=1, sticky="w")
+        ctk.CTkLabel(topo, text="Avisa no celular e no Discord quando a mensagem aparecer no jogo",
+                     text_color=COR["fraco"], font=fonte(12)).grid(row=1, column=1, sticky="w")
+        self.pilula = ctk.CTkLabel(topo, text="", corner_radius=12, height=28, font=fonte(12, "bold"),
+                                   text_color="#ffffff", fg_color=COR["sec"])
+        self.pilula.grid(row=0, column=2, rowspan=2, sticky="e", ipadx=10)
 
-        self.var_debug = tk.BooleanVar(value=False)
-        ttk.Checkbutton(r, text="Mostrar o que esta lendo (para testar)", variable=self.var_debug,
-                        command=lambda: setattr(self.monitor, "debug", self.var_debug.get())
-                        ).pack(anchor="w", padx=15, pady=(6, 0))
+        # Tres passos
+        passos = ctk.CTkFrame(r, fg_color="transparent")
+        passos.grid(row=1, column=0, sticky="ew", padx=16, pady=(10, 4))
+        for i in range(3):
+            passos.grid_columnconfigure(i, weight=1, uniform="p")
+        self.passo_conta = self._passo(passos, 0, "1", "Conta", "Conectar com Discord", self.conectar)
+        self.passo_area = self._passo(passos, 1, "2", "Área da tela", "Escolher área", self.escolher_area)
+        self.passo_discord = self._passo(passos, 2, "3", "Canal do Discord", "Abrir painel", self.abrir_painel_discord)
 
-        caixa = ttk.Frame(r, padding=12)
-        caixa.pack(fill="both", expand=True)
-        self.txt = tk.Text(caixa, height=10, state="disabled", wrap="word",
-                           bg="#0f1115", fg="#f2f4f8", font=("Consolas", 9), relief="flat")
-        barra = ttk.Scrollbar(caixa, command=self.txt.yview)
-        self.txt.configure(yscrollcommand=barra.set)
-        self.txt.pack(side="left", fill="both", expand=True)
-        barra.pack(side="right", fill="y")
+        # Acoes rapidas
+        acoes = ctk.CTkFrame(r, fg_color="transparent")
+        acoes.grid(row=2, column=0, sticky="ew", padx=22, pady=(8, 4))
+        botao(acoes, "Enviar teste", self.enviar_teste, "pri", width=140).pack(side="left")
+        botao(acoes, "Editar frases", self.editar_opcoes, width=130).pack(side="left", padx=8)
+        botao(acoes, "Jogador e servidor",
+              lambda: threading.Thread(target=mostrar_servidor, daemon=True).start(), width=160).pack(side="left")
+        self.chave_debug = ctk.CTkSwitch(acoes, text="Ver leitura", font=fonte(12), text_color=COR["fraco"],
+                                         progress_color=COR["destaque"], command=self._trocar_debug)
+        self.chave_debug.pack(side="right")
 
-        ttk.Label(r, foreground="#777", padding=(12, 0, 12, 10),
-                  text="Fechar esta janela NAO para o alerta: ele continua perto do relogio. "
-                       "Para sair, clique com o botao direito no icone e escolha Sair.",
-                  wraplength=520).pack(fill="x")
+        # Registro
+        caixa = cartao(r)
+        caixa.grid(row=3, column=0, sticky="nsew", padx=22, pady=(10, 6))
+        caixa.grid_columnconfigure(0, weight=1)
+        caixa.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(caixa, text="Atividade", text_color=COR["fraco"], font=fonte(12, "bold")).grid(
+            row=0, column=0, sticky="w", padx=14, pady=(10, 0))
+        self.txt = ctk.CTkTextbox(caixa, fg_color=COR["fundo"], text_color=COR["texto"], corner_radius=10,
+                                  font=ctk.CTkFont(family="Consolas", size=12), wrap="word",
+                                  border_width=0)
+        self.txt.grid(row=1, column=0, sticky="nsew", padx=10, pady=(6, 10))
+        self.txt.configure(state="disabled")
+
+        ctk.CTkLabel(r, text="Fechar a janela não para o alerta: ele continua no ícone perto do relógio. "
+                             "Para sair, clique com o botão direito no ícone › Sair.",
+                     text_color=COR["fraco"], font=fonte(11), wraplength=700, justify="left").grid(
+            row=4, column=0, sticky="w", padx=24, pady=(0, 14))
+
+    def _passo(self, pai, col, numero, titulo, texto_botao, comando):
+        c = cartao(pai)
+        c.grid(row=0, column=col, sticky="nsew", padx=6)
+        topo = ctk.CTkFrame(c, fg_color="transparent")
+        topo.pack(fill="x", padx=14, pady=(14, 2))
+        num = ctk.CTkLabel(topo, text=numero, width=26, height=26, corner_radius=13, fg_color=COR["sec2"],
+                           text_color=COR["texto"], font=fonte(12, "bold"))
+        num.pack(side="left")
+        ctk.CTkLabel(topo, text=titulo, text_color=COR["texto"], font=fonte(14, "bold")).pack(side="left", padx=8)
+        estado = ctk.CTkLabel(c, text="...", text_color=COR["fraco"], font=fonte(12), anchor="w")
+        estado.pack(fill="x", padx=14, pady=(2, 10))
+        b = botao(c, texto_botao, comando, height=34)
+        b.pack(fill="x", padx=14, pady=(0, 14))
+        return {"num": num, "numero": numero, "estado": estado, "botao": b}
+
+    def _marcar(self, passo, feito, texto):
+        passo["num"].configure(text="✓" if feito else passo["numero"],
+                               fg_color=COR["ok"] if feito else COR["sec2"])
+        passo["estado"].configure(text=texto, text_color=COR["ok"] if feito else COR["fraco"])
+
+    def _trocar_debug(self):
+        self.monitor.debug = bool(self.chave_debug.get())
 
     # --- utilidades ---
     def na_janela(self, funcao, *args):
@@ -848,17 +951,20 @@ class App:
 
     def _atualizar_status(self):
         cfg = ler_config()
-        if cfg.get("chave_pc"):
-            self.lbl_conta.configure(text="Conta: conectada", foreground="#2e7d32")
-            self.btn_conectar.configure(text="Conectar de novo")
-        else:
-            self.lbl_conta.configure(text="Conta: nao conectada", foreground="#c62828")
-            self.btn_conectar.configure(text="Conectar com Discord")
-        self.lbl_area.configure(text="Area da tela: " + ("escolhida" if cfg.get("regiao") else "nao escolhida"))
-        self.lbl_status.configure(text="Situacao: " + self.monitor.status)
+        conectado = bool(cfg.get("chave_pc"))
+        self._marcar(self.passo_conta, conectado, "Conectada" if conectado else "Não conectada")
+        self.passo_conta["botao"].configure(text="Conectar de novo" if conectado else "Conectar com Discord")
+        tem_area = bool(cfg.get("regiao"))
+        self._marcar(self.passo_area, tem_area, "Escolhida" if tem_area else "Não escolhida")
+        self.passo_area["botao"].configure(text="Trocar área" if tem_area else "Escolher área")
+        canal = cfg.get("canal_discord")
+        self._marcar(self.passo_discord, bool(canal), canal or "Opcional")
+        st = self.monitor.status
+        cor = COR["ok"] if st == "Monitorando" else (COR["destaque"] if st.startswith("Erro") else COR["atencao"])
+        self.pilula.configure(text=("● " + st) if st == "Monitorando" else st, fg_color=cor)
         if self.icone_bandeja is not None:
             try:
-                self.icone_bandeja.title = "Alerta Roblox - " + self.monitor.status
+                self.icone_bandeja.title = "Alerta Roblox - " + st
             except Exception:
                 pass
         self.root.after(1000, self._atualizar_status)
@@ -894,7 +1000,9 @@ class App:
                 pass
 
     def sair(self):
-        if not messagebox.askyesno("Alerta Roblox", "Parar o Alerta Roblox?\nOs alertas deixam de ser enviados."):
+        self.mostrar()
+        if dialogo(self.root, "Alerta Roblox", "Parar o Alerta Roblox?\nOs alertas deixam de ser enviados.",
+                   ("Cancelar", "Parar"), "aviso") != "Parar":
             return
         self.monitor.parar()
         if self.icone_bandeja is not None:
@@ -909,61 +1017,77 @@ class App:
         if self.ocupado:
             return
         self.ocupado = True
-        self.btn_conectar.state(["disabled"])
+        self.passo_conta["botao"].configure(state="disabled", text="Aguardando o Discord...")
         log("Conectando com o Discord...")
 
         def fim(res, erro):
             self.ocupado = False
-            self.btn_conectar.state(["!disabled"])
+            self.passo_conta["botao"].configure(state="normal")
             ok, msg = res if res else (False, str(erro))
             log(msg)
+            self.mostrar()
             if ok:
-                messagebox.showinfo("Alerta Roblox", msg + "\n\nAgora escolha a area da tela e o canal do Discord.")
+                dialogo(self.root, "Conectado", msg + "\n\nAgora escolha a área da tela e o canal do Discord.")
                 self.monitor.reiniciar()
             else:
-                messagebox.showwarning("Alerta Roblox", msg)
-            self.mostrar()
+                dialogo(self.root, "Não conectou", msg, tipo="aviso")
         self.em_segundo_plano(conectar_discord, fim)
 
     def escolher_area(self):
         self.root.withdraw()
-        log("Deixe o jogo visivel. Em 3 segundos a tela escurece: arraste sobre a area das mensagens.")
+        log("Deixe o jogo visível. Em 3 segundos a tela escurece: arraste sobre a área das mensagens.")
 
         def pronto(regiao):
             if regiao:
                 salvar_config(regiao=regiao)
-                log("Area salva:", regiao)
+                log("Área salva:", regiao)
                 self.monitor.reiniciar()
             else:
-                log("Escolha da area cancelada.")
+                log("Escolha da área cancelada.")
             self.mostrar()
         self.root.after(3000, lambda: selecionar_area(self.root, pronto))
 
     def enviar_teste(self):
         if not ler_config().get("chave_pc"):
-            messagebox.showwarning("Alerta Roblox", "Primeiro clique em 'Conectar com Discord'.")
+            dialogo(self.root, "Alerta Roblox", "Primeiro conecte com o Discord (passo 1).", tipo="aviso")
             return
         log("Enviando alerta de teste...")
         enviar_alerta("Teste", "Se voce recebeu isto, esta tudo funcionando!", teste=True)
 
     def editar_opcoes(self):
-        log("Abrindo as opcoes no Bloco de Notas. Salve e feche para valer.")
+        log("Abrindo as opções no Bloco de Notas. Salve e feche para valer.")
 
         def fim(erro_cfg, erro):
             msg = erro_cfg or (str(erro) if erro else None)
             if msg:
                 log(msg)
-                messagebox.showwarning("Alerta Roblox", msg)
+                dialogo(self.root, "Opções", msg, tipo="erro")
             else:
-                log("Opcoes atualizadas.")
+                log("Opções atualizadas.")
                 self.monitor.reiniciar()
         self.em_segundo_plano(editar_config, fim)
 
     def abrir_painel_discord(self):
         if not ler_config().get("chave_pc"):
-            messagebox.showwarning("Alerta Roblox", "Primeiro clique em 'Conectar com Discord'.")
+            dialogo(self.root, "Alerta Roblox", "Primeiro conecte com o Discord (passo 1).", tipo="aviso")
             return
-        PainelDiscord(self)
+        if getattr(self, "painel", None) and self.painel.win.winfo_exists():
+            trazer_para_frente(self.painel.win)
+            return
+        self.painel = PainelDiscord(self)
+
+
+def baixar_imagem(url, tamanho=40):
+    """Baixa o icone do servidor e deixa redondo."""
+    from PIL import Image, ImageDraw
+    import io
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        img = Image.open(io.BytesIO(r.read())).convert("RGBA").resize((tamanho * 2, tamanho * 2))
+    mascara = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mascara).ellipse((0, 0) + img.size, fill=255)
+    img.putalpha(mascara)
+    return img
 
 
 class PainelDiscord:
@@ -971,21 +1095,28 @@ class PainelDiscord:
 
     def __init__(self, app):
         self.app = app
-        self.win = tk.Toplevel(app.root)
+        self.win = ctk.CTkToplevel(app.root)
         self.win.title("Canal do Discord")
-        self.win.geometry("520x480")
+        self.win.geometry("560x560")
+        self.win.configure(fg_color=COR["fundo"])
         self.win.transient(app.root)
-        self.corpo = ttk.Frame(self.win, padding=12)
-        self.corpo.pack(fill="both", expand=True)
+        self.imagens = []
+        self.corpo = ctk.CTkFrame(self.win, fg_color="transparent")
+        self.corpo.pack(fill="both", expand=True, padx=18, pady=16)
+        trazer_para_frente(self.win)
         self.carregar()
 
     def limpar(self):
         for w in self.corpo.winfo_children():
             w.destroy()
 
+    def texto(self, msg, cor=None):
+        ctk.CTkLabel(self.corpo, text=msg, text_color=cor or COR["fraco"], font=fonte(13),
+                     wraplength=500, justify="left").pack(anchor="w", pady=6)
+
     def carregar(self):
         self.limpar()
-        ttk.Label(self.corpo, text="Carregando seus servidores...").pack(anchor="w")
+        self.texto("Carregando seus servidores...")
         self.app.em_segundo_plano(lambda: chamar_discord("painel"), self.mostrar)
 
     def mostrar(self, r, erro):
@@ -994,102 +1125,124 @@ class PainelDiscord:
         self.limpar()
         c = self.corpo
         if erro:
-            ttk.Label(c, text=f"Erro: {erro}", foreground="#c62828", wraplength=480).pack(anchor="w")
-            ttk.Button(c, text="Tentar de novo", command=self.carregar).pack(anchor="w", pady=8)
+            self.texto(f"Erro: {erro}", "#ff6b6b")
+            botao(c, "Tentar de novo", self.carregar, width=150).pack(anchor="w", pady=6)
             return
         if not r.get("conectado"):
-            ttk.Label(c, wraplength=480, text="O login do Discord expirou. Clique em 'Conectar de novo' "
-                      "na janela principal e depois abra este painel outra vez.").pack(anchor="w")
+            self.texto("O login do Discord expirou. Na janela principal, clique em "
+                       "\"Conectar de novo\" e depois abra este painel outra vez.")
             return
-        ttk.Label(c, text=f"Discord: {r.get('nome')}", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        linha = ttk.Frame(c)
-        linha.pack(fill="x", pady=6)
-        ttk.Button(linha, text="Adicionar o bot a um servidor",
-                   command=lambda: webbrowser.open(r["convite"])).pack(side="left")
-        ttk.Button(linha, text="Atualizar", command=self.carregar).pack(side="left", padx=6)
+
+        topo = ctk.CTkFrame(c, fg_color="transparent")
+        topo.pack(fill="x")
+        ctk.CTkLabel(topo, text="Servidores", text_color=COR["texto"], font=fonte(20, "bold")).pack(side="left")
+        botao(topo, "↻", self.carregar, width=38).pack(side="right")
+        botao(topo, "+ Adicionar bot", lambda: webbrowser.open(r["convite"]), "pri", width=140).pack(side="right", padx=8)
+        ctk.CTkLabel(c, text=f"Conectado como {r.get('nome')}  ·  aparecem os servidores onde você e o bot estão",
+                     text_color=COR["fraco"], font=fonte(12), anchor="w").pack(fill="x", pady=(2, 10))
 
         servidores = r.get("servidores") or []
         if not servidores:
-            ttk.Label(c, wraplength=480, text="O bot ainda nao esta em nenhum servidor seu. "
-                      "Adicione o bot e clique em Atualizar.").pack(anchor="w", pady=10)
+            self.texto("O bot ainda não está em nenhum servidor seu. Clique em \"+ Adicionar bot\", "
+                       "escolha o servidor e depois clique em ↻ para atualizar.")
             return
 
-        area = tk.Canvas(c, highlightthickness=0)
-        barra = ttk.Scrollbar(c, command=area.yview)
-        lista = ttk.Frame(area)
-        lista.bind("<Configure>", lambda e: area.configure(scrollregion=area.bbox("all")))
-        item = area.create_window((0, 0), window=lista, anchor="nw")
-        area.bind("<Configure>", lambda e: area.itemconfigure(item, width=e.width))
-        area.configure(yscrollcommand=barra.set)
-        area.pack(side="left", fill="both", expand=True)
-        barra.pack(side="right", fill="y")
-
+        lista = ctk.CTkScrollableFrame(c, fg_color="transparent")
+        lista.pack(fill="both", expand=True)
+        escolhidos = [g for g in servidores if g.get("canal")]
+        salvar_config(canal_discord=(
+            f"#{escolhidos[0]['canal']['nome']}" + (f" +{len(escolhidos) - 1}" if len(escolhidos) > 1 else "")
+        ) if escolhidos else None)
         for g in servidores:
-            quadro = ttk.LabelFrame(lista, text=g["nome"], padding=8)
-            quadro.pack(fill="x", pady=4, padx=2)
-            canal = f"#{g['canal']['nome']}" if g.get("canal") else "nenhum (nao recebe alertas)"
-            ttk.Label(quadro, text=f"Canal dos alertas: {canal}").pack(anchor="w")
-            if g.get("admin"):
-                botoes = ttk.Frame(quadro)
-                botoes.pack(anchor="w", pady=(4, 0))
-                ttk.Button(botoes, text="Trocar canal" if g.get("canal") else "Escolher canal",
-                           command=lambda g=g: self.escolher_canal(g)).pack(side="left")
-                if g.get("canal"):
-                    ttk.Button(botoes, text="Parar alertas aqui",
-                               command=lambda g=g: self.parar(g)).pack(side="left", padx=6)
-            else:
-                ttk.Label(quadro, foreground="#777",
-                          text="So administradores deste servidor podem configurar o bot.").pack(anchor="w")
+            self._cartao_servidor(lista, g)
+
+    def _cartao_servidor(self, lista, g):
+        card = cartao(lista)
+        card.pack(fill="x", pady=5, padx=2)
+        card.grid_columnconfigure(1, weight=1)
+        icone = ctk.CTkLabel(card, text=g["nome"][:1].upper(), width=40, height=40, corner_radius=20,
+                             fg_color=COR["sec2"], text_color=COR["texto"], font=fonte(16, "bold"))
+        icone.grid(row=0, column=0, rowspan=2, padx=(14, 10), pady=14)
+        if g.get("icone"):
+            def pronto(img, erro, icone=icone):
+                if img is not None and icone.winfo_exists():
+                    foto = ctk.CTkImage(light_image=img, dark_image=img, size=(40, 40))
+                    self.imagens.append(foto)
+                    icone.configure(image=foto, text="", fg_color="transparent")
+            self.app.em_segundo_plano(lambda u=g["icone"]: baixar_imagem(u), pronto)
+        ctk.CTkLabel(card, text=g["nome"], text_color=COR["texto"], font=fonte(14, "bold"), anchor="w").grid(
+            row=0, column=1, sticky="sw", pady=(14, 0))
+        if g.get("canal"):
+            sub, cor = f"Alertas em #{g['canal']['nome']}", COR["ok"]
+        elif g.get("admin"):
+            sub, cor = "Nenhum canal escolhido", COR["fraco"]
+        else:
+            sub, cor = "Só administradores podem configurar", COR["fraco"]
+        ctk.CTkLabel(card, text=sub, text_color=cor, font=fonte(12), anchor="w").grid(
+            row=1, column=1, sticky="nw", pady=(0, 14))
+        if g.get("admin"):
+            lado = ctk.CTkFrame(card, fg_color="transparent")
+            lado.grid(row=0, column=2, rowspan=2, padx=14)
+            if g.get("canal"):
+                botao(lado, "Parar", lambda: self.parar(g), "perigo", width=70, height=32).pack(side="right", padx=(6, 0))
+            botao(lado, "Trocar" if g.get("canal") else "Escolher canal", lambda: self.escolher_canal(g),
+                  "sec" if g.get("canal") else "pri", width=120 if not g.get("canal") else 80, height=32).pack(side="right")
 
     def parar(self, g):
-        if not messagebox.askyesno("Discord", f"Parar de mandar alertas em \"{g['nome']}\"?", parent=self.win):
+        if dialogo(self.win, "Discord", f"Parar de mandar alertas em \"{g['nome']}\"?",
+                   ("Cancelar", "Parar"), "aviso") != "Parar":
             return
         self.app.em_segundo_plano(lambda: chamar_discord("remover", guild_id=g["id"]),
                                   lambda r, e: self._depois(e, None))
 
     def escolher_canal(self, g):
-        janela = tk.Toplevel(self.win)
+        janela = ctk.CTkToplevel(self.win)
         janela.title(f"Canal em {g['nome']}")
-        janela.geometry("360x400")
+        janela.geometry("380x460")
+        janela.configure(fg_color=COR["fundo"])
         janela.transient(self.win)
-        aviso = ttk.Label(janela, text="Carregando canais...", padding=8)
-        aviso.pack(anchor="w")
-        caixa = tk.Listbox(janela, activestyle="none", font=("Segoe UI", 10))
-        caixa.pack(fill="both", expand=True, padx=8)
-        canais = []
+        trazer_para_frente(janela)
+        ctk.CTkLabel(janela, text=g["nome"], text_color=COR["texto"], font=fonte(17, "bold")).pack(
+            anchor="w", padx=18, pady=(16, 0))
+        aviso = ctk.CTkLabel(janela, text="Carregando canais...", text_color=COR["fraco"], font=fonte(12),
+                             wraplength=340, justify="left")
+        aviso.pack(anchor="w", padx=18, pady=(2, 8))
+        lista = ctk.CTkScrollableFrame(janela, fg_color=COR["cartao"], corner_radius=12)
+        lista.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+
+        def usar(ch):
+            aviso.configure(text="Salvando e mandando mensagem de teste...")
+            for w in lista.winfo_children():
+                w.configure(state="disabled")
+            self.app.em_segundo_plano(
+                lambda: chamar_discord("escolher", guild_id=g["id"], channel_id=ch["id"]),
+                lambda r, e: (janela.destroy(), self._depois(e, f"Os alertas vão chegar em #{ch['nome']}. "
+                                                               "O bot mandou uma mensagem de teste lá.")))
 
         def mostrar_canais(r, erro):
             if not janela.winfo_exists():
                 return
             if erro:
-                aviso.configure(text=f"Erro: {erro}", foreground="#c62828", wraplength=330)
+                aviso.configure(text=f"Erro: {erro}", text_color="#ff6b6b")
                 return
-            canais.extend(r.get("canais") or [])
-            aviso.configure(text="Escolha o canal e clique em 'Usar este canal':")
-            for ch in canais:
-                caixa.insert("end", f"# {ch['nome']}")
+            aviso.configure(text="Clique no canal que vai receber os alertas:")
+            atual = (g.get("canal") or {}).get("id")
+            for ch in r.get("canais") or []:
+                marcado = ch["id"] == atual
+                ctk.CTkButton(lista, text=f"#  {ch['nome']}" + ("   ✓" if marcado else ""), anchor="w",
+                              fg_color=COR["sec2"] if marcado else "transparent", hover_color=COR["sec"],
+                              text_color=COR["ok"] if marcado else COR["texto"], corner_radius=8,
+                              height=36, font=fonte(13), command=lambda ch=ch: usar(ch)).pack(fill="x", pady=2)
 
-        def usar():
-            sel = caixa.curselection()
-            if not sel:
-                return
-            ch = canais[sel[0]]
-            aviso.configure(text="Salvando e mandando mensagem de teste...")
-            self.app.em_segundo_plano(
-                lambda: chamar_discord("escolher", guild_id=g["id"], channel_id=ch["id"]),
-                lambda r, e: (janela.destroy(), self._depois(e, f"Os alertas vao chegar em #{ch['nome']}. "
-                                                               "O bot mandou uma mensagem de teste la.")))
-
-        ttk.Button(janela, text="Usar este canal", command=usar).pack(pady=8)
-        caixa.bind("<Double-Button-1>", lambda e: usar())
         self.app.em_segundo_plano(lambda: chamar_discord("canais", guild_id=g["id"]), mostrar_canais)
 
     def _depois(self, erro, msg_ok):
+        pai = self.win if self.win.winfo_exists() else self.app.root
         if erro:
-            messagebox.showwarning("Discord", str(erro), parent=self.win if self.win.winfo_exists() else None)
+            dialogo(pai, "Discord", str(erro), tipo="erro")
         elif msg_ok:
             log(msg_ok)
-            messagebox.showinfo("Discord", msg_ok, parent=self.win)
+            dialogo(pai, "Discord", msg_ok)
         if self.win.winfo_exists():
             self.carregar()
 

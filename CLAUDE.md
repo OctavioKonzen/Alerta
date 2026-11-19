@@ -17,7 +17,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 ## Estrutura
 | Caminho | O que é |
 |---|---|
-| `pc/monitor.py` | Programa do PC (Python, Windows). Janela tkinter + ícone na bandeja (pystray), sem console (PyInstaller `--windowed`). Login do PC pelo Discord (função `discord-bot`, ações `pc_iniciar`/`pc_resultado`). OCR com RapidOCR, captura com mss. Log em `%APPDATA%\AlertaRoblox\alerta.log`. Pelo Python: `debug`, `imagem`, `conectar` (e-mail), `autoteste` |
+| `pc/monitor.py` | Programa do PC (Python, Windows). Janela moderna em CustomTkinter (cores do app) + ícone na bandeja (pystray), sem console (PyInstaller `--windowed`). Login do PC pelo Discord (função `discord-bot`, ações `pc_iniciar`/`pc_resultado`). OCR com RapidOCR, captura com mss. Log em `%APPDATA%\AlertaRoblox\alerta.log`. Pelo Python: `debug`, `imagem`, `conectar` (e-mail), `autoteste` |
 | `pc/instalador/` | Inno Setup (`AlertaRoblox.iss`) + `icone.ico` |
 | `pc/requirements.txt` | Dependências do PC (usadas no build do .exe) |
 | `supabase/migrations/` | SQL do banco (rodado à mão no SQL Editor) |
@@ -52,7 +52,7 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - O ambiente do Claude não tem rede para Supabase, npm ou pip: valide sintaxe localmente (py_compile; parser do TypeScript) e deixe os builds de verdade para o GitHub Actions.
 
 ## Convenções
-- Textos de interface e mensagens em português. No `monitor.py`, sem acentos (console do Windows).
+- Textos de interface e mensagens em português. No `monitor.py`, a janela pode ter acentos; o que vai para o log/console fica sem acento.
 - Commits pequenos, em português, direto na `main` (o dono pediu para enviar direto).
 - Antes de mexer no formato do alerta, mantenha compatíveis os três lados: `monitor.py` (payload) ↔ `index.ts` (validação/push) ↔ `app/src/telas/Alertas.js` (exibição).
 
