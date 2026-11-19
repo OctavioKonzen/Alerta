@@ -143,6 +143,8 @@ async function enviarPush(userId: string, alertaId: number, alerta: Record<strin
   const texto_ = [
     alerta.mensagem,
     alerta.jogador ? `Jogador: ${alerta.jogador}` : null,
+    alerta.mapa ? `Mapa: ${alerta.mapa}` : null,
+    alerta.codigo_servidor ? `Codigo do servidor: ${alerta.codigo_servidor}` : null,
     alerta.job_id ? `Servidor: ${alerta.job_id}` : null,
   ].filter(Boolean).join("\n") || "Abra o app para ver";
   const dados = { alerta_id: String(alertaId), link: alerta.link ?? "" };
@@ -169,6 +171,8 @@ async function enviarDiscord(userId: string, a: Record<string, unknown>) {
 
   const campos = [
     a.jogador ? { name: "Jogador", value: String(a.jogador), inline: true } : null,
+    a.mapa ? { name: "Mapa", value: String(a.mapa), inline: true } : null,
+    a.codigo_servidor ? { name: "Codigo do servidor", value: "`" + String(a.codigo_servidor) + "`", inline: false } : null,
     a.job_id ? { name: "Servidor (Job ID)", value: "`" + String(a.job_id) + "`", inline: false } : null,
   ].filter(Boolean);
   const mensagem = {
@@ -230,9 +234,15 @@ Deno.serve(async (req) => {
     jogador: texto(corpo.jogador, 60), job_id: texto(corpo.job_id, 64),
     place_id: texto(corpo.place_id, 20), link: linkSeguro(corpo.link),
     teste: corpo.teste === true,
+    mapa: texto(corpo.mapa, 20), codigo_servidor: texto(corpo.codigo_servidor, 200),
   };
-  const { data: salvo, error } = await supa.from("alerts").insert(alerta).select("id").single();
-  if (error) return resposta({ erro: "falha ao salvar" }, 500);
+  let { data: salvo, error } = await supa.from("alerts").insert(alerta).select("id").single();
+  if (error) {
+    // Banco ainda sem as colunas mapa/codigo_servidor (SQL 0008 nao rodado): salva sem elas.
+    const { mapa: _m, codigo_servidor: _c, ...semNovos } = alerta;
+    ({ data: salvo, error } = await supa.from("alerts").insert(semNovos).select("id").single());
+  }
+  if (error || !salvo) return resposta({ erro: "falha ao salvar" }, 500);
   await supa.from("pc_keys").update({ last_used_at: new Date().toISOString() }).eq("id", pc.id);
 
   // 4) Push para os celulares e mensagem nos canais do Discord, ao mesmo tempo

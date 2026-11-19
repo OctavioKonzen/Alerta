@@ -64,6 +64,9 @@ ALERTA_TELA = False      # True = tambem pisca a tela do PC (F8 para parar)
 # --- ROBLOX ---
 NOME_JOGADOR = ""        # vazio = descobre sozinho pelo log do Roblox
 LINK_SERVIDOR_PRIVADO = ""   # opcional: link do seu servidor privado (vai no alerta)
+MAPA = "Normal"          # mapa escolhido na janela "Jogador e servidor" (Normal ou Jungle)
+CODIGO_SERVIDOR = ""     # codigo (ou link) do servidor, digitado na janela "Jogador e servidor"
+MAPAS = ("Normal", "Jungle")
 
 ATUALIZAR_SOZINHO = True # baixa e instala versoes novas sozinho
 
@@ -98,6 +101,8 @@ OPCOES = {
     "alerta_tela": "ALERTA_TELA",
     "nome_jogador": "NOME_JOGADOR",
     "link_servidor_privado": "LINK_SERVIDOR_PRIVADO",
+    "mapa": "MAPA",
+    "codigo_servidor": "CODIGO_SERVIDOR",
     "atualizar_sozinho": "ATUALIZAR_SOZINHO",
 }
 
@@ -370,7 +375,15 @@ def info_roblox():
     return info
 
 
+def link_roblox(texto):
+    """Devolve o texto se ele for um link https do Roblox; senao None."""
+    t = (texto or "").strip()
+    return t if re.match(r"^https://([a-z0-9-]+\.)*roblox\.com/", t, re.IGNORECASE) else None
+
+
 def link_servidor(info):
+    if link_roblox(CODIGO_SERVIDOR):
+        return link_roblox(CODIGO_SERVIDOR)
     if LINK_SERVIDOR_PRIVADO:
         return LINK_SERVIDOR_PRIVADO
     if info["job_id"] and info["place_id"]:
@@ -401,7 +414,9 @@ def enviar_alerta(frase, mensagem, teste=False, esperar=False):
         info = info_roblox()
         dados = {"frase": frase, "mensagem": mensagem, "jogador": info["jogador"],
                  "job_id": info["job_id"], "place_id": info["place_id"],
-                 "link": link_servidor(info), "teste": teste}
+                 "link": link_servidor(info), "teste": teste,
+                 "mapa": MAPA if MAPA in MAPAS else None,
+                 "codigo_servidor": CODIGO_SERVIDOR.strip() or None}
         for _tentativa in range(3):
             try:
                 status, r = http(f"{SUPABASE_URL}/functions/v1/{FUNCAO_ALERTA}", dados,
@@ -480,7 +495,13 @@ def selecionar_area(pai, ao_terminar):
     canvas.bind("<B1-Motion>", arrastou)
     canvas.bind("<ButtonRelease-1>", soltou)
     janela.bind("<Escape>", lambda e: terminar(None))
+    janela.deiconify()
+    janela.lift()
     janela.focus_force()
+    try:
+        janela.grab_set()      # todos os cliques vao para a selecao
+    except Exception:
+        pass
 
 
 _leitor = None
@@ -832,6 +853,7 @@ def trazer_para_frente(janela):
     """CTkToplevel as vezes abre atras da janela principal no Windows."""
     def _f():
         try:
+            janela.deiconify()
             janela.lift()
             janela.focus_force()
             janela.attributes("-topmost", True)
@@ -887,6 +909,7 @@ class App:
             except Exception:
                 pass
         self.icone_bandeja = None
+        self.root.report_callback_exception = self._erro_na_janela
         self.monitor = Monitor(ao_detectar=lambda nome: self.na_janela(alerta_tela, self.root, nome))
         self.ocupado = False
         self._montar()
@@ -931,8 +954,7 @@ class App:
         acoes.grid(row=2, column=0, sticky="ew", padx=22, pady=(8, 4))
         botao(acoes, "Enviar teste", self.enviar_teste, "pri", width=140).pack(side="left")
         botao(acoes, "Frases", self.abrir_frases, width=110).pack(side="left", padx=8)
-        botao(acoes, "Jogador e servidor",
-              lambda: threading.Thread(target=mostrar_servidor, daemon=True).start(), width=160).pack(side="left")
+        botao(acoes, "Jogador e servidor", self.abrir_jogador, width=160).pack(side="left")
         self.chave_debug = ctk.CTkSwitch(acoes, text="Ver leitura", font=fonte(12), text_color=COR["fraco"],
                                          progress_color=COR["destaque"], command=self._trocar_debug)
         self.chave_debug.pack(side="right")
@@ -971,7 +993,29 @@ class App:
         b.pack(fill="x", padx=14, pady=(0, 14))
         return {"num": num, "numero": numero, "estado": estado, "botao": b}
 
+    def _erro_na_janela(self, tipo, valor, tb):
+        """Qualquer erro dentro da janela aparece no quadro Atividade (e no alerta.log)."""
+        import traceback
+        detalhe = "".join(traceback.format_exception(tipo, valor, tb))
+        log("ERRO na janela:", detalhe.strip().splitlines()[-1])
+        log(detalhe[-1500:].replace("\n", " | "))
+        try:
+            self.mostrar()
+        except Exception:
+            pass
+
+    def _mudar(self, widget, chave, **opcoes):
+        """So reconfigura o widget se algo mudou (evita redesenhar a cada segundo)."""
+        cache = self.__dict__.setdefault("_cache_widgets", {})
+        if cache.get(chave) != opcoes:
+            cache[chave] = opcoes
+            widget.configure(**opcoes)
+
     def _marcar(self, passo, feito, texto):
+        chave = id(passo)
+        if self.__dict__.setdefault("_cache_passos", {}).get(chave) == (feito, texto):
+            return
+        self._cache_passos[chave] = (feito, texto)
         passo["num"].configure(text="✓" if feito else passo["numero"],
                                fg_color=COR["ok"] if feito else COR["sec2"])
         passo["estado"].configure(text=texto, text_color=COR["ok"] if feito else COR["fraco"])
@@ -1017,15 +1061,17 @@ class App:
         cfg = ler_config()
         conectado = bool(cfg.get("chave_pc"))
         self._marcar(self.passo_conta, conectado, "Conectada" if conectado else "Não conectada")
-        self.passo_conta["botao"].configure(text="Conectar de novo" if conectado else "Conectar com Discord")
+        if not self.ocupado:
+            self._mudar(self.passo_conta["botao"], "b_conta",
+                        text="Conectar de novo" if conectado else "Conectar com Discord")
         tem_area = bool(cfg.get("regiao"))
         self._marcar(self.passo_area, tem_area, "Escolhida" if tem_area else "Não escolhida")
-        self.passo_area["botao"].configure(text="Trocar área" if tem_area else "Escolher área")
+        self._mudar(self.passo_area["botao"], "b_area", text="Trocar área" if tem_area else "Escolher área")
         canal = cfg.get("canal_discord")
         self._marcar(self.passo_discord, bool(canal), canal or "Opcional")
         st = self.monitor.status
         cor = COR["ok"] if st == "Monitorando" else (COR["destaque"] if st.startswith("Erro") else COR["atencao"])
-        self.pilula.configure(text=("● " + st) if st == "Monitorando" else st, fg_color=cor)
+        self._mudar(self.pilula, "pilula", text=("● " + st) if st == "Monitorando" else st, fg_color=cor)
         if self.icone_bandeja is not None:
             try:
                 self.icone_bandeja.title = "Alerta Roblox - " + st
@@ -1064,6 +1110,17 @@ class App:
             if depois:
                 depois()
         self.em_segundo_plano(sincronizar_frases, fim)
+
+    def abrir_jogador(self):
+        if getattr(self, "janela_jogador", None) and self.janela_jogador.win.winfo_exists():
+            trazer_para_frente(self.janela_jogador.win)
+            return
+        log("Abrindo Jogador e servidor...")
+        try:
+            self.janela_jogador = JanelaJogador(self)
+        except Exception as erro:
+            log("Nao consegui abrir a janela:", repr(erro))
+            dialogo(self.root, "Jogador e servidor", f"Não consegui abrir a janela:\n{erro}", tipo="erro")
 
     def abrir_frases(self):
         if not ler_config().get("chave_pc"):
@@ -1163,8 +1220,8 @@ class App:
         self.em_segundo_plano(conectar_discord, fim)
 
     def escolher_area(self):
+        log("Deixe o jogo visivel. Em 3 segundos a tela escurece: arraste sobre a area das mensagens.")
         self.root.withdraw()
-        log("Deixe o jogo visível. Em 3 segundos a tela escurece: arraste sobre a área das mensagens.")
 
         def pronto(regiao):
             if regiao:
@@ -1174,7 +1231,15 @@ class App:
             else:
                 log("Escolha da área cancelada.")
             self.mostrar()
-        self.root.after(3000, lambda: selecionar_area(self.root, pronto))
+        def abrir():
+            try:
+                selecionar_area(self.root, pronto)
+                log("Tela de selecao aberta.")
+            except Exception as erro:
+                log("Nao consegui abrir a tela de selecao:", repr(erro))
+                self.mostrar()
+                dialogo(self.root, "Área da tela", f"Não consegui abrir a seleção da área:\n{erro}", tipo="erro")
+        self.root.after(3000, abrir)
 
     def enviar_teste(self):
         if not ler_config().get("chave_pc"):
@@ -1203,7 +1268,83 @@ class App:
         if getattr(self, "painel", None) and self.painel.win.winfo_exists():
             trazer_para_frente(self.painel.win)
             return
-        self.painel = PainelDiscord(self)
+        log("Abrindo o painel do Discord...")
+        try:
+            self.painel = PainelDiscord(self)
+        except Exception as erro:
+            log("Nao consegui abrir o painel:", repr(erro))
+            dialogo(self.root, "Discord", f"Não consegui abrir o painel:\n{erro}", tipo="erro")
+
+
+class JanelaJogador:
+    """Nome do jogador, mapa (Normal/Jungle) e codigo do servidor: vao junto com cada alerta."""
+
+    def __init__(self, app):
+        self.app = app
+        self.win = ctk.CTkToplevel(app.root)
+        self.win.title("Jogador e servidor")
+        self.win.geometry("480x540")
+        self.win.configure(fg_color=COR["fundo"])
+        self.win.transient(app.root)
+        corpo = ctk.CTkFrame(self.win, fg_color="transparent")
+        corpo.pack(fill="both", expand=True, padx=20, pady=16)
+        ctk.CTkLabel(corpo, text="Jogador e servidor", text_color=COR["texto"], font=fonte(20, "bold")).pack(anchor="w")
+        ctk.CTkLabel(corpo, text="Isto vai junto com cada alerta, no celular e no Discord.",
+                     text_color=COR["fraco"], font=fonte(12)).pack(anchor="w", pady=(2, 14))
+
+        self.detectado = ctk.CTkLabel(corpo, text="Lendo o Roblox...", text_color=COR["fraco"], font=fonte(12),
+                                      justify="left", anchor="w", wraplength=430)
+
+        self.nome = self._campo(corpo, "Nome do jogador", "Vazio = descobre sozinho pelo Roblox", NOME_JOGADOR)
+
+        ctk.CTkLabel(corpo, text="Mapa", text_color=COR["texto"], font=fonte(13, "bold")).pack(anchor="w", pady=(12, 4))
+        self.mapa = ctk.CTkSegmentedButton(corpo, values=list(MAPAS), height=36, font=fonte(13, "bold"),
+                                           selected_color=COR["destaque"], selected_hover_color=COR["destaque2"],
+                                           unselected_color=COR["sec"], unselected_hover_color=COR["sec2"],
+                                           fg_color=COR["sec"], text_color="#ffffff")
+        self.mapa.set(MAPA if MAPA in MAPAS else MAPAS[0])
+        self.mapa.pack(fill="x")
+
+        self.codigo = self._campo(corpo, "Código do servidor", "Código ou link do servidor", CODIGO_SERVIDOR)
+
+        self.detectado.pack(fill="x", pady=(14, 0))
+        linha = ctk.CTkFrame(corpo, fg_color="transparent")
+        linha.pack(fill="x", side="bottom", pady=(10, 0))
+        botao(linha, "Salvar", self.salvar, "pri", width=120).pack(side="right")
+        botao(linha, "Cancelar", self.win.destroy, width=110).pack(side="right", padx=8)
+        trazer_para_frente(self.win)
+        app.em_segundo_plano(info_roblox, self._mostrar_detectado)
+
+    def _campo(self, pai, titulo, dica, valor):
+        ctk.CTkLabel(pai, text=titulo, text_color=COR["texto"], font=fonte(13, "bold")).pack(anchor="w", pady=(12, 4))
+        e = ctk.CTkEntry(pai, placeholder_text=dica, height=38, corner_radius=10, fg_color=COR["cartao"],
+                         border_color=COR["borda"], text_color=COR["texto"], font=fonte(13))
+        if valor:
+            e.insert(0, valor)
+        e.pack(fill="x")
+        return e
+
+    def _mostrar_detectado(self, info, erro):
+        if not self.win.winfo_exists():
+            return
+        if erro or not info or not info.get("arquivo"):
+            self.detectado.configure(text="Não achei o Roblox aberto. Com o jogo aberto, o nome e o "
+                                          "servidor (Job ID) são detectados sozinhos.")
+            return
+        self.detectado.configure(text=f"Detectado no Roblox: jogador {info.get('jogador') or '?'}  ·  "
+                                      f"servidor (Job ID) {info.get('job_id') or '?'}")
+
+    def salvar(self):
+        global NOME_JOGADOR, MAPA, CODIGO_SERVIDOR
+        NOME_JOGADOR = self.nome.get().strip()[:60]
+        MAPA = self.mapa.get() if self.mapa.get() in MAPAS else MAPAS[0]
+        CODIGO_SERVIDOR = self.codigo.get().strip()[:200]
+        dados = ler_config()
+        opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
+        opcoes.update(nome_jogador=NOME_JOGADOR, mapa=MAPA, codigo_servidor=CODIGO_SERVIDOR)
+        salvar_config(opcoes=opcoes)
+        log(f"Salvo: jogador {NOME_JOGADOR or '(automatico)'} | mapa {MAPA} | servidor {CODIGO_SERVIDOR or '-'}")
+        self.win.destroy()
 
 
 class JanelaFrases:

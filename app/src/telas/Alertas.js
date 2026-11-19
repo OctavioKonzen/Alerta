@@ -58,6 +58,11 @@ export default function Alertas({ userId }) {
           {a.mensagem ? (<><Text style={s.rotulo}>Mensagem</Text><Text style={s.valor}>{a.mensagem}</Text></>) : null}
           <Text style={s.rotulo}>Jogador</Text>
           <Text style={s.valor}>{a.jogador || '-'}</Text>
+          {a.mapa ? (<><Text style={s.rotulo}>Mapa</Text><Text style={s.valor}>{a.mapa}</Text></>) : null}
+          {a.codigo_servidor ? (<>
+            <Text style={s.rotulo}>Codigo do servidor</Text>
+            <Text style={[s.valor, { fontFamily: 'monospace', fontSize: 13 }]} selectable>{a.codigo_servidor}</Text>
+          </>) : null}
           <Text style={s.rotulo}>Codigo do servidor (Job ID)</Text>
           <Text style={[s.valor, { fontFamily: 'monospace', fontSize: 13 }]} selectable>{a.job_id || '-'}</Text>
           {a.link ? (
