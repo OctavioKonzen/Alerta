@@ -6,10 +6,18 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const supa = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
+// Chave de servico: a antiga (service_role) ou a nova (SUPABASE_SECRET_KEYS).
+function chaveServico(): string {
+  const antiga = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (antiga) return antiga;
+  try {
+    const novas = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
+    return (novas.default ?? Object.values(novas)[0]) as string;
+  } catch {
+    throw new Error("chave de servico do Supabase nao encontrada");
+  }
+}
+const supa = createClient(Deno.env.get("SUPABASE_URL")!, chaveServico());
 const MAX_POR_MINUTO = 6;
 
 function resposta(corpo: unknown, status = 200) {
