@@ -479,7 +479,9 @@
       aviso(`Pronto! Os alertas vão chegar em #${c.nome}. O bot mandou um teste lá.`);
       carregar();
     } catch (e) {
-      $("detalheModal").textContent = e.message;
+      $("detalheModal").textContent = "Não deu certo: " + e.message;
+      aviso("Não deu para usar #" + c.nome + ": " + e.message, true);
+      $("listaCanais").scrollTop = 0;
       for (const b of $("listaCanais").querySelectorAll("button")) b.disabled = false;
     }
   }

@@ -318,10 +318,14 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
       throw new Error("o bot nao consegue mandar mensagem em #" + canal.nome +
         ". Nas permissoes do canal, deixe o bot Ver canal, Enviar mensagens e Inserir links.");
     }
-    await supa.from("discord_servidores").upsert({
+    const { error: erroSalvar } = await supa.from("discord_servidores").upsert({
       guild_id: guildId, guild_nome: g.name.slice(0, 100), channel_id: channelId,
       canal_nome: canal.nome.slice(0, 100), configurado_por: userId, updated_at: new Date().toISOString(),
     }, { onConflict: "guild_id" });
+    if (erroSalvar) {
+      console.error(erroSalvar);
+      throw new Error("nao consegui salvar o canal (o SQL 0009 ja foi rodado no Supabase?)");
+    }
     await supa.from("discord_participantes").upsert({ user_id: userId, guild_id: guildId }, { onConflict: "user_id,guild_id" });
     return { ok: true };
   }
