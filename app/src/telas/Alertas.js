@@ -63,8 +63,6 @@ export default function Alertas({ userId }) {
             <Text style={s.rotulo}>Codigo do servidor</Text>
             <Text style={[s.valor, { fontFamily: 'monospace', fontSize: 13 }]} selectable>{a.codigo_servidor}</Text>
           </>) : null}
-          <Text style={s.rotulo}>Codigo do servidor (Job ID)</Text>
-          <Text style={[s.valor, { fontFamily: 'monospace', fontSize: 13 }]} selectable>{a.job_id || '-'}</Text>
           {a.link ? (
             <TouchableOpacity style={[s.botao, { marginTop: 12 }]} onPress={() => Linking.openURL(a.link)}>
               <Text style={s.botaoTexto}>Entrar no servidor</Text>

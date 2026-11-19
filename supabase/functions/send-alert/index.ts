@@ -159,9 +159,10 @@ async function enviarPush(userId: string, alertaId: number, alerta: Record<strin
   }
 }
 
-// "Something feels off no server ABC123 do jogador Fulano" (server e jogador configuraveis no PC)
+// "Something feels off no server ABC123 do jogador Fulano" (server e jogador configuraveis no PC).
+// O Job ID (codigo interno do Roblox) nao aparece: ele so vai dentro do link "Entrar no servidor".
 function servidorDo(a: Record<string, any>) {
-  return (a.codigo_servidor as string | null) || (a.job_id as string | null) || null;
+  return (a.codigo_servidor as string | null) || null;
 }
 function resumo(a: Record<string, any>, negrito = false) {
   const b = (t: string) => (negrito ? `**${t.replace(/\*/g, "")}**` : t);
@@ -187,7 +188,6 @@ async function enviarDiscord(userId: string, a: Record<string, unknown>) {
 
   const campos = [
     a.mensagem ? { name: "Lido no chat", value: String(a.mensagem).slice(0, 1000), inline: false } : null,
-    a.codigo_servidor && a.job_id ? { name: "Job ID", value: "`" + String(a.job_id) + "`", inline: false } : null,
   ].filter(Boolean);
   const frase = String(a.frase ?? "Mensagem detectada").replace(/\*/g, "");
   const mensagem = {
