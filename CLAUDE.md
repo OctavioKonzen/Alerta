@@ -37,7 +37,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 - **Pacote Android**: `com.octaviokonzen.alerta`. Esquema de link do app: `alertaroblox://` (volta do login com Discord).
 - **Discord**: um bot so, de todos. Edge Function `discord-bot` (Verify JWT DESLIGADO). Redirect do OAuth2: `https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot`.
 
-- **Repositório público** (o dono escolheu). **Atualização automática**: os builds publicam na Release fixa `ultima` deste repositório (script `.github/publicar.sh`, usa o `github.token`): `AlertaRoblox.apk`, `AlertaRoblox-Setup.exe`, `versao-app.json` e `versao-pc.json`. O PC (`VERSAO`, trocada no build) confere a cada 6 h, baixa e instala sozinho (`/VERYSILENT`, o instalador reabre o programa). O app (`src/Atualizacao.js`) compara `versionCode`, baixa o APK e abre o instalador do Android.
+- **Repositório público** (o dono escolheu). **Atualização automática**: os builds publicam na Release fixa `ultima` deste repositório (script `.github/publicar.sh`, usa o `github.token`): `AlertaRoblox.apk`, `AlertaRoblox-Setup.exe`, `versao-app.json` e `versao-pc.json`. O PC (`VERSAO`/`CODIGO`, trocados no build) confere ao abrir e a cada 30 min (ou no botão Atualizar do rodapé), baixa e instala sozinho (`/VERYSILENT`, o instalador reabre o programa). O app (`src/Atualizacao.js`) compara `versionCode`, baixa o APK e abre o instalador do Android.
 
 ## Segredos (NUNCA colocar no repo nem em mensagens)
 - `FIREBASE_SERVICE_ACCOUNT`: segredo da Edge Function no Supabase (JSON da conta de serviço do Firebase).

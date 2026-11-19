@@ -972,11 +972,18 @@ class App:
         self.txt.grid(row=1, column=0, sticky="nsew", padx=10, pady=(6, 10))
         self.txt.configure(state="disabled")
 
-        ctk.CTkLabel(r, text="Fechar a janela não para o alerta: ele continua no ícone perto do relógio. "
-                             "Para sair, clique com o botão direito no ícone › Sair."
-                             f"   ·   Versão {VERSAO}",
-                     text_color=COR["fraco"], font=fonte(11), wraplength=700, justify="left").grid(
-            row=4, column=0, sticky="w", padx=24, pady=(0, 14))
+        rodape = ctk.CTkFrame(r, fg_color="transparent")
+        rodape.grid(row=4, column=0, sticky="ew", padx=24, pady=(0, 14))
+        rodape.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(rodape, text="Fechar a janela não para o alerta: ele continua no ícone perto do relógio. "
+                                  "Para sair, clique com o botão direito no ícone › Sair.",
+                     text_color=COR["fraco"], font=fonte(11), wraplength=560, justify="left").grid(
+            row=0, column=0, sticky="w")
+        self.lbl_versao = ctk.CTkLabel(rodape, text=f"Versão {VERSAO}", text_color=COR["fraco"], font=fonte(11))
+        self.lbl_versao.grid(row=0, column=1, padx=(10, 8))
+        self.btn_atualizar = botao(rodape, "Atualizar", lambda: self.verificar_atualizacao(manual=True),
+                                   width=90, height=28)
+        self.btn_atualizar.grid(row=0, column=2)
 
     def _passo(self, pai, col, numero, titulo, texto_botao, comando):
         c = cartao(pai)
@@ -1092,6 +1099,7 @@ class App:
             pystray.MenuItem("Escolher area da tela", lambda: self.na_janela(self.escolher_area)),
             pystray.MenuItem("Frases", lambda: self.na_janela(self.abrir_frases)),
             pystray.MenuItem("Opcoes avancadas", lambda: self.na_janela(self.editar_opcoes)),
+            pystray.MenuItem("Procurar atualizacao", lambda: self.na_janela(lambda: self.verificar_atualizacao(manual=True))),
             pystray.MenuItem("Sair", lambda: self.na_janela(self.sair)),
         )
         self.icone_bandeja = pystray.Icon("AlertaRoblox", imagem_icone(), "Alerta Roblox", menu)
@@ -1133,9 +1141,21 @@ class App:
 
     # --- atualizacao automatica ---
     def _verificar_atualizacao(self):
-        self.root.after(6 * 3600 * 1000, self._verificar_atualizacao)   # de novo em 6 horas
-        if not ATUALIZAR_SOZINHO or getattr(self, "atualizando", False):
+        self.root.after(30 * 60 * 1000, self._verificar_atualizacao)   # de novo em 30 minutos
+        if ATUALIZAR_SOZINHO:
+            self.verificar_atualizacao()
+
+    def verificar_atualizacao(self, manual=False):
+        if getattr(self, "atualizando", False) or getattr(self, "procurando", False):
             return
+        if manual and VERSAO == "dev":
+            dialogo(self.root, "Atualizar", "Esta cópia roda pelo Python (versão de desenvolvimento): "
+                                            "não se atualiza sozinha.", tipo="aviso")
+            return
+        self.procurando = True
+        self.btn_atualizar.configure(state="disabled", text="Procurando...")
+        if manual:
+            log("Procurando versao nova...")
 
         def procurar_e_baixar():
             info = procurar_atualizacao()
@@ -1145,10 +1165,17 @@ class App:
             return info, baixar_instalador(info)
 
         def fim(res, erro):
+            self.procurando = False
+            self.btn_atualizar.configure(state="normal", text="Atualizar")
             if erro:
                 log("Nao consegui atualizar agora (tento mais tarde):", erro)
+                if manual:
+                    dialogo(self.root, "Atualizar", f"Não consegui atualizar agora:\n{erro}", tipo="erro")
             elif res:
                 self.instalar_atualizacao(*res)
+            elif manual:
+                log(f"Voce ja esta na versao mais nova ({VERSAO}).")
+                dialogo(self.root, "Atualizar", f"Você já está na versão mais nova ({VERSAO}).")
         self.em_segundo_plano(procurar_e_baixar, fim)
 
     def instalar_atualizacao(self, info, caminho):
