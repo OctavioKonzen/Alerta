@@ -17,7 +17,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 ## Estrutura
 | Caminho | O que é |
 |---|---|
-| `pc/monitor.py` | Script do PC (Python, Windows). OCR com RapidOCR ou Tesseract, captura com mss. Comandos: `conectar`, `setup`, `teste`, `servidor`, `configurar`, `debug`, `imagem`, `autoteste` |
+| `pc/monitor.py` | Programa do PC (Python, Windows). Janela tkinter + ícone na bandeja (pystray), sem console (PyInstaller `--windowed`). Login do PC pelo Discord (função `discord-bot`, ações `pc_iniciar`/`pc_resultado`). OCR com RapidOCR, captura com mss. Log em `%APPDATA%\AlertaRoblox\alerta.log`. Pelo Python: `debug`, `imagem`, `conectar` (e-mail), `autoteste` |
 | `pc/instalador/` | Inno Setup (`AlertaRoblox.iss`) + `icone.ico` |
 | `pc/requirements.txt` | Dependências do PC (usadas no build do .exe) |
 | `supabase/migrations/` | SQL do banco (rodado à mão no SQL Editor) |
@@ -60,6 +60,7 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [ ] Dono rodar o SQL `0002_token_firebase.sql` (se ainda não rodou)
 - [x] Criar o segredo `ANDROID_KEYSTORE_PASSWORD` no GitHub
 - [x] Primeiro build dos workflows (APK 1.0.1 e .exe) deu certo
-- [ ] Bot do Discord: rodar `0003_discord.sql`, criar o bot no Developer Portal, segredos no Supabase, publicar `discord-bot` e a nova `smooth-responder`, gerar APK novo
+- [x] Bot do Discord: `0003_discord.sql`, bot criado (app "Tortilha"), segredos no Supabase, `discord-bot` e `smooth-responder` publicadas, APK novo gerado
+- [ ] PC com janela + login pelo Discord: rodar `0004_pc_discord.sql`, publicar a `discord-bot` nova, gerar instalador novo
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).

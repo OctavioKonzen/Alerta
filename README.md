@@ -69,17 +69,16 @@ O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInst
 3. Permita as notificações.
 
 ### No PC (Windows) – pelo instalador (recomendado)
-1. Baixe o `AlertaRoblox-Setup-x.y.z.exe` em **Releases** e instale. Não precisa de Python nem de administrador.
+1. No app do celular, abra a aba **Discord** e toque em **Conectar com Discord**.
+2. Baixe o `AlertaRoblox-Setup-x.y.z.exe` em **Releases** e instale. Não precisa de Python nem de administrador.
    Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações > Executar assim mesmo**. Isso acontece porque o instalador não tem assinatura digital paga.
-2. No fim da instalação, o app abre em **Conectar minha conta**: use o mesmo e-mail e senha do app.
-3. No Menu Iniciar, pasta **Alerta Roblox**:
-   - **2 - Escolher área da tela**: arraste sobre a área das mensagens no jogo.
-   - **3 - Enviar alerta de teste**: deve chegar uma notificação no celular.
-   - **Alerta Roblox**: começa a monitorar (deixe a janela aberta enquanto joga).
+3. O Alerta Roblox abre uma janela (sem tela preta). Nela:
+   - **Conectar com Discord**: abre o navegador; autorize com a mesma conta do Discord do passo 1.
+   - **Escolher área da tela**: deixe o jogo visível e arraste sobre a área das mensagens.
+   - **Canal do Discord**: mostra os servidores onde o bot está; se você for administrador, escolha o canal dos alertas.
+   - **Enviar teste**: deve chegar uma notificação no celular (e no canal do Discord).
    - **Editar frases e opções**: muda as frases procuradas, o nome do jogador e outras opções.
-   - **Ver jogador e servidor**: mostra o que foi detectado no Roblox.
-
-As configurações ficam em `%APPDATA%\AlertaRoblox\config.json`. Para recomeçar do zero, apague esse arquivo.
+4. Fechar a janela não para o alerta: ele fica com um ícone perto do relógio do Windows. Para sair, clique com o botão direito no ícone e escolha **Sair**.
 
 ### No PC (Windows) – sem instalador (Python)
 1. Instale o [Python](https://www.python.org/downloads/) marcando **Add Python to PATH**.

@@ -50,11 +50,13 @@ jobs:
       - name: Empacotar com PyInstaller
         working-directory: pc
         run: >
-          pyinstaller --noconfirm --clean --console
+          pyinstaller --noconfirm --clean --windowed
           --name AlertaRoblox
           --icon instalador/icone.ico
+          --add-data "instalador/icone.ico;."
           --collect-all rapidocr_onnxruntime
           --collect-binaries onnxruntime
+          --collect-submodules pystray
           monitor.py
 
       # PC zerado pode nao ter o Visual C++ (o leitor de texto precisa dele).
@@ -72,9 +74,14 @@ jobs:
             }
           }
 
+      # O .exe nao tem janela preta: espera ele terminar e mostra o alerta.log
       - name: Autoteste do .exe (leitura de texto)
         working-directory: pc
-        run: dist\AlertaRoblox\AlertaRoblox.exe autoteste
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist\AlertaRoblox\AlertaRoblox.exe" -ArgumentList "autoteste" -Wait -PassThru
+          Get-Content "$env:APPDATA\AlertaRoblox\alerta.log" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { Write-Host "::error::Autoteste falhou (codigo $($p.ExitCode))"; exit 1 }
 
       - name: Instalar Inno Setup
         run: choco install innosetup -y --no-progress

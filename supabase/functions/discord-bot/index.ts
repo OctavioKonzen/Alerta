@@ -15,6 +15,9 @@
 //   DISCORD_BOT_TOKEN     = Bot > Reset Token
 // No Developer Portal > OAuth2 > Redirects, adicione:
 //   https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot
+//
+// O programa do PC tambem usa esta funcao: entra com o Discord (pc_iniciar /
+// pc_resultado) e depois usa o painel com o cabecalho "x-chave-pc".
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -60,6 +63,24 @@ function voltar(params: Record<string, string>) {
 function aleatorio(bytes = 24) {
   return [...crypto.getRandomValues(new Uint8Array(bytes))]
     .map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function textoPc(msg: string) {
+  return new Response(msg + "\n", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+}
+async function sha256(texto: string) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function donoDoPc(chave: string): Promise<string | null> {
+  if (!/^rbx_[0-9a-f]{48}$/.test(chave)) return null;
+  const { data } = await supa.from("pc_keys").select("user_id").eq("key_hash", await sha256(chave)).maybeSingle();
+  return data?.user_id ?? null;
+}
+function urlLogin(estado: string, escopo: string) {
+  return "https://discord.com/oauth2/authorize?" + new URLSearchParams({
+    client_id: segredo("DISCORD_CLIENT_ID"), response_type: "code",
+    scope: escopo, redirect_uri: REDIRECT, state: estado,
+  });
 }
 function linkConvite() {
   return `https://discord.com/oauth2/authorize?client_id=${segredo("DISCORD_CLIENT_ID")}` +
@@ -178,11 +199,7 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     await supa.from("discord_estados").insert({
       estado, user_id: userId, expira_em: new Date(Date.now() + 10 * 60_000).toISOString(),
     });
-    const url = "https://discord.com/oauth2/authorize?" + new URLSearchParams({
-      client_id: segredo("DISCORD_CLIENT_ID"), response_type: "code",
-      scope: "identify guilds", redirect_uri: REDIRECT, state: estado,
-    });
-    return { url };
+    return { url: urlLogin(estado, "identify guilds") };
   }
 
   if (qual === "sair") {
@@ -251,31 +268,106 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
   return { erro: "acao desconhecida" };
 }
 
+// ---------- Login do programa do PC ----------
+// pcUserId: dono do PC, quando o PC ja tem chave (so renova o login do Discord).
+async function pcIniciar(corpo: Record<string, unknown>, pcUserId: string | null) {
+  const estado = aleatorio();
+  await supa.from("discord_estados").delete().lt("expira_em", new Date().toISOString());
+  const nome = typeof corpo.nome_pc === "string" && corpo.nome_pc.trim()
+    ? corpo.nome_pc.trim().slice(0, 40) : "PC";
+  await supa.from("discord_estados").insert({
+    estado, user_id: pcUserId, tipo: pcUserId ? "pc_renovar" : "pc", nome_pc: nome,
+    expira_em: new Date(Date.now() + 10 * 60_000).toISOString(),
+  });
+  return { url: urlLogin(estado, "identify guilds"), estado };
+}
+
+async function pcResultado(estado: string) {
+  const { data: p } = await supa.from("discord_estados").select("*")
+    .eq("estado", estado).like("tipo", "pc%").maybeSingle();
+  if (!p || new Date(p.expira_em) < new Date()) return { pronto: true, erro: "tempo esgotado, tente de novo" };
+  if (!p.pronto) return { pronto: false };
+  await supa.from("discord_estados").delete().eq("estado", estado);
+  return p.erro ? { pronto: true, erro: p.erro } : { pronto: true, chave: p.chave_pc };
+}
+
+async function retornoLoginPc(pedido: Record<string, any>, u: { id: string; nome: string }, t: TokensDiscord) {
+  const falhar = async (erro: string) => {
+    await supa.from("discord_estados").update({ pronto: true, erro }).eq("estado", pedido.estado);
+    return textoPc("Nao deu certo: " + erro);
+  };
+  let userId: string = pedido.user_id;
+  if (pedido.tipo === "pc") {
+    const { data: conta } = await supa.from("discord_contas").select("user_id")
+      .eq("discord_id", u.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (!conta) {
+      return await falhar("este Discord ainda nao foi conectado no app do celular. " +
+        "Abra o app > aba Discord > Conectar com Discord, e depois tente de novo no PC.");
+    }
+    userId = conta.user_id;
+  }
+  await salvarTokens(userId, u, t);
+
+  let chave: string | null = null;
+  if (pedido.tipo === "pc") {
+    const { count } = await supa.from("pc_keys").select("id", { count: "exact", head: true }).eq("user_id", userId);
+    if ((count ?? 0) >= 5) return await falhar("limite de 5 PCs por conta. Remova um PC no app (aba Meus PCs).");
+    chave = "rbx_" + aleatorio(24);
+    const { error } = await supa.from("pc_keys").insert({
+      user_id: userId, nome: pedido.nome_pc || "PC", key_hash: await sha256(chave), prefixo: chave.slice(0, 10),
+    });
+    if (error) { console.error(error); return await falhar("erro ao criar a chave do PC"); }
+  }
+  await supa.from("discord_estados").update({ pronto: true, chave_pc: chave }).eq("estado", pedido.estado);
+  return textoPc("Pronto! Pode fechar esta aba e voltar para o Alerta Roblox.");
+}
+
+type TokensDiscord = { access_token: string; refresh_token: string; expires_in: number };
+async function salvarTokens(userId: string, u: { id: string; nome: string }, t: TokensDiscord) {
+  await supa.from("discord_contas").upsert({
+    user_id: userId, discord_id: u.id, nome: u.nome,
+    access_token: t.access_token, refresh_token: t.refresh_token,
+    expira_em: new Date(Date.now() + t.expires_in * 1000).toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+}
+
 // ---------- Retorno do login com Discord (vem do navegador) ----------
 async function retornoLogin(url: URL) {
   const estado = url.searchParams.get("state") ?? "";
   const code = url.searchParams.get("code");
-  if (!code) return voltar({ erro: "login cancelado" });
+  if (!code) {
+    const { data: p } = await supa.from("discord_estados").select("tipo").eq("estado", estado).maybeSingle();
+    if (String(p?.tipo ?? "").startsWith("pc")) {
+      await supa.from("discord_estados").update({ pronto: true, erro: "login cancelado" }).eq("estado", estado);
+      return textoPc("Login cancelado. Pode fechar esta aba.");
+    }
+    return voltar({ erro: "login cancelado" });
+  }
 
-  const { data: pedido } = await supa.from("discord_estados").select("user_id, expira_em")
+  const { data: pedido } = await supa.from("discord_estados").select("*")
     .eq("estado", estado).maybeSingle();
-  if (!pedido || new Date(pedido.expira_em) < new Date()) return voltar({ erro: "pedido expirado, tente de novo" });
-  await supa.from("discord_estados").delete().eq("estado", estado);
+  const doPc = String(pedido?.tipo ?? "").startsWith("pc");
+  if (!pedido || new Date(pedido.expira_em) < new Date()) {
+    return doPc ? textoPc("Pedido expirado. Tente de novo no PC.") : voltar({ erro: "pedido expirado, tente de novo" });
+  }
+  if (!doPc) await supa.from("discord_estados").delete().eq("estado", estado);
 
   try {
     const t = await trocarToken({ grant_type: "authorization_code", code, redirect_uri: REDIRECT });
     const eu = await discord("/users/@me", `Bearer ${t.access_token}`);
     if (!eu.ok) throw new Error("nao consegui ler sua conta do Discord");
-    const u = eu.corpo as { id: string; username: string; global_name?: string };
-    await supa.from("discord_contas").upsert({
-      user_id: pedido.user_id, discord_id: u.id, nome: (u.global_name || u.username).slice(0, 60),
-      access_token: t.access_token, refresh_token: t.refresh_token,
-      expira_em: new Date(Date.now() + t.expires_in * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+    const bruto = eu.corpo as { id: string; username: string; global_name?: string };
+    const u = { id: bruto.id, nome: (bruto.global_name || bruto.username).slice(0, 60) };
+    if (doPc) return await retornoLoginPc(pedido, u, t);
+    await salvarTokens(pedido.user_id, u, t);
     return voltar({ ok: "1" });
   } catch (e) {
     console.error(e);
+    if (doPc) {
+      await supa.from("discord_estados").update({ pronto: true, erro: "falha no login com Discord" }).eq("estado", estado);
+      return textoPc("Falha no login com Discord. Tente de novo no PC.");
+    }
     return voltar({ erro: "falha no login com Discord" });
   }
 }
@@ -286,12 +378,25 @@ Deno.serve(async (req) => {
   if (req.method === "GET") return await retornoLogin(url);
   if (req.method !== "POST") return json({ erro: "metodo invalido" }, 405);
 
-  const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const { data: quem } = await supa.auth.getUser(jwt);
-  if (!quem?.user) return json({ erro: "faca login no app" }, 401);
-
   try {
     const corpo = await req.json().catch(() => ({}));
+    const qual = String(corpo.acao ?? "");
+    const chavePc = req.headers.get("x-chave-pc")?.trim();
+
+    // Programa do PC
+    if (qual === "pc_resultado") return json(await pcResultado(String(corpo.estado ?? "")));
+    if (qual === "pc_iniciar") return json(await pcIniciar(corpo, chavePc ? await donoDoPc(chavePc) : null));
+    if (chavePc) {
+      const dono = await donoDoPc(chavePc);
+      if (!dono) return json({ erro: "chave do PC invalida, conecte o PC de novo" }, 401);
+      if (!["painel", "canais", "escolher", "remover"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      return json(await acao(dono, corpo));
+    }
+
+    // App do celular
+    const jwt = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+    const { data: quem } = await supa.auth.getUser(jwt);
+    if (!quem?.user) return json({ erro: "faca login no app" }, 401);
     return json(await acao(quem.user.id, corpo));
   } catch (e) {
     return json({ erro: e instanceof Error ? e.message : String(e) });

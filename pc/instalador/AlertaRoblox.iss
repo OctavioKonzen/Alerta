@@ -37,23 +37,28 @@ Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na Area de Trabalho"; GroupDescription: "Atalhos:"
+Name: "iniciarwindows"; Description: "Abrir o Alerta Roblox junto com o Windows"; GroupDescription: "Atalhos:"
 
 [Files]
 Source: "..\dist\AlertaRoblox\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; Atalhos da versao antiga (com janela preta) que nao existem mais
+[InstallDelete]
+Type: files; Name: "{group}\1 - Conectar minha conta.lnk"
+Type: files; Name: "{group}\2 - Escolher area da tela.lnk"
+Type: files; Name: "{group}\3 - Enviar alerta de teste.lnk"
+Type: files; Name: "{group}\Ver jogador e servidor.lnk"
+Type: files; Name: "{group}\Editar frases e opcoes.lnk"
+Type: files; Name: "{group}\Modo debug (ver leitura).lnk"
+
 [Icons]
 Name: "{group}\Alerta Roblox";               Filename: "{app}\{#AppExe}"
-Name: "{group}\1 - Conectar minha conta";    Filename: "{app}\{#AppExe}"; Parameters: "conectar"
-Name: "{group}\2 - Escolher area da tela";   Filename: "{app}\{#AppExe}"; Parameters: "setup"
-Name: "{group}\3 - Enviar alerta de teste";  Filename: "{app}\{#AppExe}"; Parameters: "teste"
-Name: "{group}\Ver jogador e servidor";      Filename: "{app}\{#AppExe}"; Parameters: "servidor"
-Name: "{group}\Editar frases e opcoes";      Filename: "{app}\{#AppExe}"; Parameters: "configurar"
-Name: "{group}\Modo debug (ver leitura)";    Filename: "{app}\{#AppExe}"; Parameters: "debug"
 Name: "{group}\Desinstalar Alerta Roblox";   Filename: "{uninstallexe}"
 Name: "{autodesktop}\Alerta Roblox";         Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{userstartup}\Alerta Roblox";         Filename: "{app}\{#AppExe}"; Tasks: iniciarwindows
 
 [Run]
-Filename: "{app}\{#AppExe}"; Parameters: "conectar"; Description: "Conectar minha conta do app agora"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "Abrir o Alerta Roblox agora"; Flags: postinstall nowait skipifsilent
 
 [Messages]
-ptbr.FinishedLabel=O Alerta Roblox foi instalado.%n%nPrimeiro use "Conectar minha conta" (mesmo e-mail e senha do app no celular). Depois abra o "Alerta Roblox" com o jogo aberto.
+ptbr.FinishedLabel=O Alerta Roblox foi instalado.%n%nNa janela dele: 1) Conectar com Discord (antes, conecte o Discord no app do celular, aba Discord); 2) Escolher area da tela; 3) Canal do Discord. Depois ele fica rodando perto do relogio do Windows.
