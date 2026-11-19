@@ -46,6 +46,12 @@ alter table public.alerts enable row level security;
 create policy "ver meus alertas"    on public.alerts for select using (auth.uid() = user_id);
 create policy "apagar meus alertas" on public.alerts for delete using (auth.uid() = user_id);
 
+-- Permissoes de acesso pela API (o RLS acima limita cada um aos proprios dados).
+grant usage on schema public to authenticated, service_role;
+grant select, delete on public.pc_keys, public.push_tokens, public.alerts to authenticated;
+grant all on public.pc_keys, public.push_tokens, public.alerts to service_role;
+grant usage, select on all sequences in schema public to service_role;
+
 -- Alertas novos aparecem na hora no app (tempo real).
 alter publication supabase_realtime add table public.alerts;
 
