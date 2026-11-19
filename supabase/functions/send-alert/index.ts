@@ -166,7 +166,11 @@ async function enviarPush(userId: string, alertaId: number, alerta: Record<strin
 async function enviarDiscord(userId: string, a: Record<string, unknown>) {
   const token = Deno.env.get("DISCORD_BOT_TOKEN")?.trim();
   if (!token) return 0;
-  const { data: canais } = await supa.from("discord_canais").select("id, channel_id").eq("user_id", userId);
+  // Servidores onde a pessoa participa -> canal escolhido pelo administrador de cada um
+  const { data: meus } = await supa.from("discord_participantes").select("guild_id").eq("user_id", userId);
+  if (!meus?.length) return 0;
+  const { data: canais } = await supa.from("discord_servidores").select("guild_id, channel_id")
+    .in("guild_id", meus.map((m) => m.guild_id));
   if (!canais?.length) return 0;
 
   const campos = [
@@ -202,7 +206,7 @@ async function enviarDiscord(userId: string, a: Record<string, unknown>) {
     console.error("Discord falhou", r.status, JSON.stringify(erro));
     // 10003 = canal apagado; 10004 = bot saiu do servidor
     if (erro?.code === 10003 || erro?.code === 10004) {
-      await supa.from("discord_canais").delete().eq("id", c.id);
+      await supa.from("discord_servidores").delete().eq("guild_id", c.guild_id);
     }
   }));
   return enviados;

@@ -225,12 +225,15 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
   }
 
   if (qual === "sair") {
+    await supa.from("discord_participantes").delete().eq("user_id", userId);
     await supa.from("discord_canais").delete().eq("user_id", userId);
     await supa.from("discord_contas").delete().eq("user_id", userId);
     return { ok: true };
   }
 
+  // Parar de mandar os MEUS alertas neste servidor (qualquer membro)
   if (qual === "remover") {
+    await supa.from("discord_participantes").delete().eq("user_id", userId).eq("guild_id", String(corpo.guild_id));
     await supa.from("discord_canais").delete().eq("user_id", userId).eq("guild_id", String(corpo.guild_id));
     return { ok: true };
   }
@@ -239,21 +242,46 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
   if (!pessoa) return { conectado: false, convite: linkConvite() };
 
   if (qual === "painel") {
-    const [servidores, { data: escolhidos }] = await Promise.all([
-      servidoresEmComum(pessoa.token),
-      supa.from("discord_canais").select("guild_id, channel_id, canal_nome").eq("user_id", userId),
+    const servidores = await servidoresEmComum(pessoa.token);
+    const ids = servidores.map((g) => g.id);
+    const [{ data: configs }, { data: meus }] = await Promise.all([
+      supa.from("discord_servidores").select("guild_id, channel_id, canal_nome").in("guild_id", ids.length ? ids : ["-"]),
+      supa.from("discord_participantes").select("guild_id").eq("user_id", userId),
     ]);
-    const porServidor = new Map((escolhidos ?? []).map((c) => [c.guild_id, c]));
+    const canalDe = new Map((configs ?? []).map((c) => [c.guild_id, c]));
+    const participo = new Set((meus ?? []).map((m) => m.guild_id));
     return {
       conectado: true, nome: pessoa.nome, convite: linkConvite(),
-      servidores: servidores.map((g) => ({
-        id: g.id, nome: g.name, admin: ehAdmin(g),
-        icone: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null,
-        canal: porServidor.has(g.id)
-          ? { id: porServidor.get(g.id)!.channel_id, nome: porServidor.get(g.id)!.canal_nome }
-          : null,
-      })),
+      servidores: servidores.map((g) => {
+        const c = canalDe.get(g.id);
+        return {
+          id: g.id, nome: g.name, admin: ehAdmin(g),
+          icone: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null,
+          canal: c ? { id: c.channel_id, nome: c.canal_nome } : null,   // canal do servidor (do admin)
+          participando: participo.has(g.id),                            // meus alertas vao para la?
+        };
+      }),
     };
+  }
+
+  // Mandar os MEUS alertas para o canal deste servidor (qualquer membro; o admin escolhe o canal)
+  if (qual === "participar") {
+    const guildId = String(corpo.guild_id);
+    const g = (await servidoresEmComum(pessoa.token)).find((x) => x.id === guildId);
+    if (!g) throw new Error("o bot nao esta nesse servidor (ou voce nao esta)");
+    const { data: cfg } = await supa.from("discord_servidores").select("canal_nome").eq("guild_id", guildId).maybeSingle();
+    if (!cfg) throw new Error("um administrador deste servidor ainda nao escolheu o canal dos alertas");
+    await supa.from("discord_participantes").upsert({ user_id: userId, guild_id: guildId }, { onConflict: "user_id,guild_id" });
+    return { ok: true, canal: cfg.canal_nome };
+  }
+
+  // Desligar o canal do servidor: para os alertas de TODOS (so administrador)
+  if (qual === "desligar") {
+    const guildId = String(corpo.guild_id);
+    await servidorComoAdmin(pessoa.token, guildId);
+    await supa.from("discord_servidores").delete().eq("guild_id", guildId);   // participantes saem junto
+    await supa.from("discord_canais").delete().eq("guild_id", guildId);
+    return { ok: true };
   }
 
   if (qual === "canais") {
@@ -271,7 +299,8 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     const teste = await discord(`/channels/${channelId}/messages`, comoBot(), {
       method: "POST",
       body: JSON.stringify({
-        content: `✅ Este canal vai receber os alertas do **Alerta Roblox** de ${pessoa.nome ?? "um jogador"}.`,
+        content: `✅ Este canal vai receber os alertas do **Alerta Roblox** deste servidor ` +
+          `(escolhido por ${pessoa.nome ?? "um administrador"}). Cada membro pode mandar os seus pelo painel.`,
         allowed_mentions: { parse: [] },
       }),
     });
@@ -280,10 +309,11 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
       throw new Error("o bot nao consegue mandar mensagem em #" + canal.nome +
         ". Nas permissoes do canal, deixe o bot Ver canal, Enviar mensagens e Inserir links.");
     }
-    await supa.from("discord_canais").upsert({
-      user_id: userId, guild_id: guildId, guild_nome: g.name.slice(0, 100),
-      channel_id: channelId, canal_nome: canal.nome.slice(0, 100),
-    }, { onConflict: "user_id,guild_id" });
+    await supa.from("discord_servidores").upsert({
+      guild_id: guildId, guild_nome: g.name.slice(0, 100), channel_id: channelId,
+      canal_nome: canal.nome.slice(0, 100), configurado_por: userId, updated_at: new Date().toISOString(),
+    }, { onConflict: "guild_id" });
+    await supa.from("discord_participantes").upsert({ user_id: userId, guild_id: guildId }, { onConflict: "user_id,guild_id" });
     return { ok: true };
   }
 
@@ -485,7 +515,7 @@ Deno.serve(async (req) => {
     if (chavePc) {
       const dono = await donoDoPc(chavePc);
       if (!dono) return json({ erro: "chave do PC invalida, conecte o PC de novo" }, 401);
-      if (!["painel", "canais", "escolher", "remover", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
@@ -500,7 +530,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 

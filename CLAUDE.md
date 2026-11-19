@@ -46,7 +46,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 - A chave `sb_secret_...` / service_role do Supabase não é usada fora da Edge Function.
 
 ## Banco (Supabase)
-Tabelas `frases` (frases procuradas, por conta, máx. 30; padrão colocado por `garantir_frases`/`minhas_frases`), `pc_keys` (hash da chave do PC), `push_tokens` (token FCM do celular), `alerts` (histórico, máx. 200 por conta), `discord_contas` (tokens do Discord, só a Edge Function lê), `discord_estados` (login em andamento) e `discord_canais` (canal escolhido por servidor). Todas com RLS: cada usuário vê só o que é dele.
+Tabelas `frases` (frases procuradas, por conta, máx. 30; padrão colocado por `garantir_frases`/`minhas_frases`), `pc_keys` (hash da chave do PC), `push_tokens` (token FCM do celular), `alerts` (histórico, máx. 200 por conta), `discord_contas` (tokens do Discord, só a Edge Function lê), `discord_estados` (login em andamento) e `discord_servidores` (canal de cada servidor, só admin escolhe), `discord_participantes` (quem manda os próprios alertas para cada servidor; qualquer membro) e `discord_canais` (formato antigo, não usado mais). Todas com RLS: cada usuário vê só o que é dele.
 Funções RPC: `criar_chave_pc(p_nome)` (máx. 5 PCs por conta) e `registrar_token(p_token)` (aceita token FCM).
 Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para o dono rodar no SQL Editor. Não há CLI do Supabase configurada.
 
@@ -72,5 +72,6 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [ ] Conta pelo Discord: rodar `0006_conta_discord.sql`, publicar a `discord-bot` nova, gerar APK novo
 - [ ] Frases na nuvem (app aba Frases, site, janela Frases no PC; PC sincroniza a cada 1 min pela ação `frases`): rodar `0007_frases.sql`, publicar a `discord-bot` nova
 - [ ] Mapa (Normal/Jungle) e código do servidor no alerta (janela "Jogador e servidor" do PC → payload `mapa`/`codigo_servidor` → push, Discord e app): rodar `0008_mapa_codigo.sql`, publicar a `smooth-responder` nova (ela salva mesmo sem o SQL)
+- [ ] Canal por servidor + membros participam (ações `participar`, `remover` = parar os meus, `desligar` = admin desliga o canal): rodar `0009_servidor_participantes.sql` ANTES de publicar as duas funções novas
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).

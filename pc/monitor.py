@@ -1498,7 +1498,7 @@ class PainelDiscord:
 
         lista = ctk.CTkScrollableFrame(c, fg_color="transparent")
         lista.pack(fill="both", expand=True)
-        escolhidos = [g for g in servidores if g.get("canal")]
+        escolhidos = [g for g in servidores if g.get("canal") and g.get("participando", True)]
         salvar_config(canal_discord=(
             f"#{escolhidos[0]['canal']['nome']}" + (f" +{len(escolhidos) - 1}" if len(escolhidos) > 1 else "")
         ) if escolhidos else None)
@@ -1521,28 +1521,46 @@ class PainelDiscord:
             self.app.em_segundo_plano(lambda u=g["icone"]: baixar_imagem(u), pronto)
         ctk.CTkLabel(card, text=g["nome"], text_color=COR["texto"], font=fonte(14, "bold"), anchor="w").grid(
             row=0, column=1, sticky="sw", pady=(14, 0))
-        if g.get("canal"):
-            sub, cor = f"Alertas em #{g['canal']['nome']}", COR["ok"]
+        canal, eu = g.get("canal"), g.get("participando")
+        if canal and eu:
+            sub, cor = f"Seus alertas vão para #{canal['nome']}", COR["ok"]
+        elif canal:
+            sub, cor = f"Canal #{canal['nome']} · seus alertas não vão para lá", COR["fraco"]
         elif g.get("admin"):
             sub, cor = "Nenhum canal escolhido", COR["fraco"]
         else:
-            sub, cor = "Só administradores podem configurar", COR["fraco"]
-        ctk.CTkLabel(card, text=sub, text_color=cor, font=fonte(12), anchor="w").grid(
-            row=1, column=1, sticky="nw", pady=(0, 14))
-        if g.get("admin"):
-            lado = ctk.CTkFrame(card, fg_color="transparent")
-            lado.grid(row=0, column=2, rowspan=2, padx=14)
-            if g.get("canal"):
-                botao(lado, "Parar", lambda: self.parar(g), "perigo", width=70, height=32).pack(side="right", padx=(6, 0))
-            botao(lado, "Trocar" if g.get("canal") else "Escolher canal", lambda: self.escolher_canal(g),
-                  "sec" if g.get("canal") else "pri", width=120 if not g.get("canal") else 80, height=32).pack(side="right")
+            sub, cor = "Esperando um administrador escolher o canal", COR["fraco"]
+        ctk.CTkLabel(card, text=sub, text_color=cor, font=fonte(12), anchor="w", wraplength=300,
+                     justify="left").grid(row=1, column=1, sticky="nw", pady=(0, 10))
 
-    def parar(self, g):
-        if dialogo(self.win, "Discord", f"Parar de mandar alertas em \"{g['nome']}\"?",
-                   ("Cancelar", "Parar"), "aviso") != "Parar":
+        linha = ctk.CTkFrame(card, fg_color="transparent")
+        linha.grid(row=2, column=0, columnspan=2, sticky="ew", padx=14, pady=(0, 14))
+        if canal:
+            if eu:
+                botao(linha, "Parar meus alertas", lambda: self.acao("remover", g, None), "perigo",
+                      height=32).pack(side="left", padx=(0, 6))
+            else:
+                botao(linha, "Mandar meus alertas aqui",
+                      lambda: self.acao("participar", g, f"Pronto! Seus alertas vão para #{canal['nome']}."),
+                      "pri", height=32).pack(side="left", padx=(0, 6))
+        if g.get("admin"):
+            botao(linha, "Trocar canal" if canal else "Escolher canal", lambda: self.escolher_canal(g),
+                  "sec" if canal else "pri", height=32).pack(side="left", padx=(0, 6))
+            if canal:
+                botao(linha, "Desligar canal", lambda: self.desligar(g), "perigo", height=32).pack(side="left")
+        if not linha.winfo_children():
+            linha.destroy()
+
+    def acao(self, qual, g, msg_ok):
+        self.app.em_segundo_plano(lambda: chamar_discord(qual, guild_id=g["id"]),
+                                  lambda r, e: self._depois(e, msg_ok))
+
+    def desligar(self, g):
+        if dialogo(self.win, "Discord", f"Desligar o canal de alertas de \"{g['nome']}\"?\n"
+                                        "Para os alertas de TODOS os membros.", ("Cancelar", "Desligar"),
+                   "aviso") != "Desligar":
             return
-        self.app.em_segundo_plano(lambda: chamar_discord("remover", guild_id=g["id"]),
-                                  lambda r, e: self._depois(e, None))
+        self.acao("desligar", g, None)
 
     def escolher_canal(self, g):
         janela = ctk.CTkToplevel(self.win)

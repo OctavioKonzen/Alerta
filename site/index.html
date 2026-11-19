@@ -200,7 +200,7 @@
     <div class="painel-topo">
       <div>
         <h2>Seus servidores</h2>
-        <div class="detalhe">Aparecem os servidores onde você e o bot estão. Administradores escolhem o canal dos alertas.</div>
+        <div class="detalhe">Aparecem os servidores onde você e o bot estão. Escolha para onde vão os seus alertas; só administradores escolhem o canal.</div>
       </div>
       <div class="espaco"></div>
       <button class="btn" id="btnAtualizar" title="Atualizar">↻ Atualizar</button>
@@ -409,27 +409,40 @@
       ? el("img", { class: "icone-servidor", src: g.icone, alt: "" })
       : el("div", { class: "icone-servidor" }, (g.nome || "?").slice(0, 1).toUpperCase());
     let estado;
-    if (g.canal) estado = el("div", { class: "estado ok" }, `Alertas em #${g.canal.nome}`);
+    if (g.canal && g.participando) estado = el("div", { class: "estado ok" }, `Seus alertas vão para #${g.canal.nome}`);
+    else if (g.canal) estado = el("div", { class: "estado" }, `Canal #${g.canal.nome} · seus alertas não vão para lá`);
     else if (g.admin) estado = el("div", { class: "estado" }, "Nenhum canal escolhido");
-    else estado = el("div", { class: "estado" }, "Só administradores configuram");
+    else estado = el("div", { class: "estado" }, "Esperando um administrador escolher o canal");
 
     const botoes = el("div", { class: "botoes" });
+    if (g.canal) {
+      botoes.append(g.participando
+        ? el("button", { class: "btn perigo", onclick: (ev) => acaoServidor("remover", g, ev.currentTarget,
+            `Seus alertas não vão mais para ${g.nome}.`) }, "Parar meus alertas")
+        : el("button", { class: "btn pri", onclick: (ev) => acaoServidor("participar", g, ev.currentTarget,
+            `Pronto! Seus alertas vão para #${g.canal.nome}.`) }, "Mandar meus alertas aqui"));
+    }
+    const admin = el("div", { class: "botoes" });
     if (g.admin) {
-      botoes.append(el("button", { class: "btn " + (g.canal ? "" : "pri"), onclick: () => abrirCanais(g) },
+      admin.append(el("button", { class: "btn " + (g.canal ? "" : "pri"), onclick: () => abrirCanais(g) },
         g.canal ? "Trocar canal" : "Escolher canal"));
-      if (g.canal) botoes.append(el("button", { class: "btn perigo", onclick: (ev) => parar(g, ev.currentTarget) }, "Parar alertas"));
+      if (g.canal) admin.append(el("button", { class: "btn perigo", onclick: (ev) => {
+        if (!confirm(`Desligar o canal de alertas de "${g.nome}"? Para os alertas de TODOS os membros.`)) return;
+        acaoServidor("desligar", g, ev.currentTarget, `Canal desligado em ${g.nome}.`);
+      } }, "Desligar canal"));
     }
     return el("div", { class: "cartao servidor" },
       el("div", { class: "cab" }, icone, el("div", { style: "min-width:0" }, el("div", { class: "nome" }, g.nome), estado)),
-      g.admin ? botoes : null);
+      botoes.children.length ? botoes : null,
+      g.admin ? el("div", { class: "detalhe", style: "margin-bottom:-6px" }, "Administrador") : null,
+      g.admin ? admin : null);
   }
 
-  async function parar(g, botao) {
-    if (!confirm(`Parar de mandar alertas em "${g.nome}"?`)) return;
+  async function acaoServidor(acao, g, botao, msgOk) {
     botao.disabled = true;
     try {
-      await chamar("remover", { guild_id: g.id });
-      aviso(`Alertas parados em ${g.nome}.`);
+      await chamar(acao, { guild_id: g.id });
+      aviso(msgOk);
       carregar();
     } catch (e) { aviso(e.message, true); botao.disabled = false; }
   }

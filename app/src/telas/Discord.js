@@ -77,11 +77,29 @@ export default function Discord() {
     setOcupado(false);
   }
 
+  async function participar(g) {
+    try {
+      await chamar('participar', { guild_id: g.id });
+      Alert.alert('Pronto!', `Seus alertas vao para #${g.canal.nome}.`);
+    } catch (e) { Alert.alert('Discord', e.message); }
+    carregar();
+  }
+
   function parar(g) {
-    Alert.alert('Parar alertas', `Parar de mandar alertas em "${g.nome}"?`, [
+    Alert.alert('Parar meus alertas', `Seus alertas nao vao mais para "${g.nome}".`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Parar', style: 'destructive', onPress: async () => {
         try { await chamar('remover', { guild_id: g.id }); } catch (e) { Alert.alert('Discord', e.message); }
+        carregar();
+      } },
+    ]);
+  }
+
+  function desligar(g) {
+    Alert.alert('Desligar canal', `Desligar o canal de alertas de "${g.nome}"? Para os alertas de TODOS os membros.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Desligar', style: 'destructive', onPress: async () => {
+        try { await chamar('desligar', { guild_id: g.id }); } catch (e) { Alert.alert('Discord', e.message); }
         carregar();
       } },
     ]);
@@ -160,23 +178,33 @@ export default function Discord() {
               <Text style={[s.valor, { fontWeight: '700', flex: 1 }]}>{g.nome}</Text>
             </View>
             <Text style={s.rotulo}>Canal dos alertas</Text>
-            <Text style={[s.valor, { color: g.canal ? cores.ok : cores.fraco }]}>
-              {g.canal ? `#${g.canal.nome}` : 'Nenhum (nao recebe alertas)'}
+            <Text style={[s.valor, { color: g.canal && g.participando ? cores.ok : cores.fraco }]}>
+              {g.canal && g.participando ? `Seus alertas vao para #${g.canal.nome}`
+                : g.canal ? `#${g.canal.nome} (seus alertas nao vao para la)`
+                : g.admin ? 'Nenhum canal escolhido' : 'Esperando um administrador escolher o canal'}
             </Text>
+            {g.canal ? (g.participando ? (
+              <TouchableOpacity style={s.botaoSec} onPress={() => parar(g)}>
+                <Text style={[s.botaoSecTexto, { color: '#ff6b6b' }]}>Parar meus alertas</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={s.botao} onPress={() => participar(g)}>
+                <Text style={s.botaoTexto}>Mandar meus alertas aqui</Text>
+              </TouchableOpacity>
+            )) : null}
             {g.admin ? (
               <>
-                <TouchableOpacity style={s.botaoSec} onPress={() => abrirCanais(g)}>
-                  <Text style={s.botaoSecTexto}>{g.canal ? 'Trocar canal' : 'Escolher canal'}</Text>
+                <Text style={[s.rotulo, { marginTop: 12 }]}>Administrador</Text>
+                <TouchableOpacity style={g.canal ? s.botaoSec : s.botao} onPress={() => abrirCanais(g)}>
+                  <Text style={g.canal ? s.botaoSecTexto : s.botaoTexto}>{g.canal ? 'Trocar canal' : 'Escolher canal'}</Text>
                 </TouchableOpacity>
                 {g.canal ? (
-                  <TouchableOpacity style={s.botaoSec} onPress={() => parar(g)}>
-                    <Text style={[s.botaoSecTexto, { color: '#ff6b6b' }]}>Parar alertas aqui</Text>
+                  <TouchableOpacity style={s.botaoSec} onPress={() => desligar(g)}>
+                    <Text style={[s.botaoSecTexto, { color: '#ff6b6b' }]}>Desligar canal</Text>
                   </TouchableOpacity>
                 ) : null}
               </>
-            ) : (
-              <Text style={s.rotulo}>So administradores deste servidor podem configurar o bot.</Text>
-            )}
+            ) : null}
           </View>
         )}
       />
