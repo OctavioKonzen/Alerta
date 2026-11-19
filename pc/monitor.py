@@ -1692,7 +1692,23 @@ def autoteste():
     texto = ler(preparar(img))
     nota = similaridade(normalizar("Something feels off"), normalizar(texto))
     log(f"AUTOTESTE Leitor: {nome_leitor} | leu: {texto!r} | nota {nota:.2f}")
-    return 0 if nota >= LIMIAR_TEXTO else 1
+    if nota < LIMIAR_TEXTO:
+        return 1
+    # A janela e o icone perto do relogio tambem precisam funcionar no .exe
+    try:
+        import pystray  # noqa: F401
+        from PIL import Image  # noqa: F401
+        imagem_icone()
+        janela = ctk.CTk()
+        janela.withdraw()
+        ctk.CTkButton(janela, text="teste").pack()
+        janela.update()
+        janela.destroy()
+        log(f"AUTOTESTE Janela: ok | icone: {caminho_recurso('icone.ico') or 'nao encontrado'}")
+    except Exception as erro:
+        log("AUTOTESTE Janela FALHOU:", repr(erro))
+        return 1
+    return 0
 
 
 def debug_terminal():
