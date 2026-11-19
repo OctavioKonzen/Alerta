@@ -53,7 +53,41 @@ jobs:
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
-          pip install -r pc/requirements.txt pyinstaller
+          pip install -r pc/requirements.txt
+
+      # O "motor" pronto do PyInstaller e muito marcado por antivirus (falso positivo).
+      # Compilar o nosso proprio reduz bastante esses alarmes.
+      - name: Instalar PyInstaller compilando o bootloader
+        shell: pwsh
+        env:
+          PYINSTALLER_COMPILE_BOOTLOADER: "1"
+        run: |
+          pip install wheel
+          pip install --no-binary pyinstaller --no-cache-dir pyinstaller
+
+      # Nome, descricao, versao e autor dentro do .exe (programa "sem identidade" parece suspeito)
+      - name: Dados do programa (versao do Windows)
+        shell: pwsh
+        run: |
+          $n = "$env:APP_VERSION".Split(".") + @("0","0","0","0")
+          $t = "$($n[0]), $($n[1]), $($n[2]), 0"
+          @"
+          VSVersionInfo(
+            ffi=FixedFileInfo(filevers=($t), prodvers=($t), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+            kids=[
+              StringFileInfo([StringTable('041604B0', [
+                StringStruct('CompanyName', 'OctavioKonzen'),
+                StringStruct('FileDescription', 'Alerta Roblox - avisa no celular e no Discord'),
+                StringStruct('FileVersion', '$env:APP_VERSION'),
+                StringStruct('InternalName', 'AlertaRoblox'),
+                StringStruct('LegalCopyright', 'OctavioKonzen'),
+                StringStruct('OriginalFilename', 'AlertaRoblox.exe'),
+                StringStruct('ProductName', 'Alerta Roblox'),
+                StringStruct('ProductVersion', '$env:APP_VERSION')])]),
+              VarFileInfo([VarStruct('Translation', [1046, 1200])])
+            ]
+          )
+          "@ | Set-Content -Encoding utf8 pc/versao_windows.txt
 
       - name: Empacotar com PyInstaller
         working-directory: pc
@@ -66,6 +100,7 @@ jobs:
           --collect-binaries onnxruntime
           --collect-submodules pystray
           --collect-all customtkinter
+          --version-file versao_windows.txt
           monitor.py
 
       # PC zerado pode nao ter o Visual C++ (o leitor de texto precisa dele).
