@@ -124,7 +124,7 @@
 
   @media (max-width: 560px) {
     .hero { padding-top: 44px; }
-    .usuario .nome-usuario { display: none; }
+    .usuario .nome-usuario, .some-celular { display: none; }
     .acoes .btn { flex: 1; }
   }
 </style>
@@ -140,6 +140,7 @@
       <span class="nome-usuario" id="nomeUsuario"></span>
       <button class="btn peq" id="btnSair">Sair</button>
     </div>
+    <a class="btn pri peq convite" id="btnAdicionarTopo" target="_blank" rel="noopener" aria-label="Adicionar no Discord" title="Adicionar no Discord">+ <span class="some-celular">Adicionar no Discord</span></a>
     <button class="btn discord peq" id="btnEntrarTopo">Entrar</button>
   </div>
 </nav>
@@ -153,9 +154,10 @@
       <p class="sub">O PC lê o chat do jogo e avisa no seu celular e no canal do seu servidor do Discord,
         com o nome do jogador e o link para entrar no servidor.</p>
       <div class="acoes">
+        <a class="btn pri grande convite" target="_blank" rel="noopener">+ Adicionar no Discord</a>
         <button class="btn discord grande" id="btnEntrar">
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.2a18.3 18.3 0 0 0-5.5 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18a19.9 19.9 0 0 0 6 3l1.3-2a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2a19.8 19.8 0 0 0 6-3c.5-5.1-.8-9.6-3.6-13.6ZM8.5 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm7 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg>
-          Entrar com Discord
+          Entrar no painel
         </button>
         <a class="btn grande" href="#baixar">Baixar o app e o PC</a>
       </div>
@@ -230,6 +232,8 @@
   const FUNCAO = "https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot";
   const CHAVE_PUBLICA = "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz";
   const CHAVE_SESSAO = "alerta_sessao";
+  // Convite do bot: Ver canais + Enviar mensagens + Inserir links
+  const CONVITE = "https://discord.com/oauth2/authorize?client_id=1572977754025099395&scope=bot&permissions=19456";
   const $ = (id) => document.getElementById(id);
 
   function lerSessao() { try { return localStorage.getItem(CHAVE_SESSAO); } catch { return null; } }
@@ -315,7 +319,7 @@
       }
       $("nomeUsuario").textContent = r.nome || "";
       $("avatar").textContent = (r.nome || "?").slice(0, 1).toUpperCase();
-      $("btnConvite").href = r.convite;
+      $("btnConvite").href = r.convite || CONVITE;
       const servidores = r.servidores || [];
       if (!servidores.length) {
         lista.replaceChildren(el("div", { class: "cartao vazio", style: "grid-column: 1 / -1" },
@@ -427,6 +431,8 @@
   $("fundoModal").addEventListener("click", (e) => { if (e.target === $("fundoModal")) fecharModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharModal(); });
 
+  for (const a of document.querySelectorAll(".convite")) a.href = CONVITE;
+  $("btnConvite").href = CONVITE;
   infoDownloads();
   if (lerSessao()) carregar(); else mostrarInicio();
 })();
