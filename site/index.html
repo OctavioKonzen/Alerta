@@ -29,7 +29,7 @@
   nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
         background: rgba(15,17,21,.75); border-bottom: 1px solid rgba(42,47,58,.6); }
   nav .container { display: flex; align-items: center; gap: 12px; height: 64px; }
-  .marca { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+  .marca { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; white-space: nowrap; }
   .ponto { width: 14px; height: 14px; border-radius: 50%; background: var(--destaque);
            box-shadow: 0 0 0 4px rgba(229,57,53,.18), 0 0 18px rgba(229,57,53,.6); }
   .espaco { flex: 1; }
@@ -148,6 +148,7 @@
   <div class="container">
     <a class="marca" href="./"><span class="ponto"></span> Alerta Roblox</a>
     <div class="espaco"></div>
+    <a class="btn peq" href="#baixar">Baixar</a>
     <div class="usuario" id="usuario">
       <span class="avatar" id="avatar">?</span>
       <span class="nome-usuario" id="nomeUsuario"></span>
@@ -189,28 +190,6 @@
       </div>
     </div>
 
-    <div class="secao" id="baixar">
-      <h2>Baixar</h2>
-      <p>Depois de instalados, os dois se atualizam sozinhos.</p>
-      <div class="grade">
-        <div class="cartao baixar">
-          <div class="linha">
-            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#43A047" aria-hidden="true"><path d="M17.6 9.48 19.44 6.3a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52ZM7 15.25A1.25 1.25 0 1 1 8.25 14 1.25 1.25 0 0 1 7 15.25Zm10 0A1.25 1.25 0 1 1 18.25 14 1.25 1.25 0 0 1 17 15.25Z"/></svg></div>
-            <div><h3>Celular Android</h3><div class="detalhe" id="infoApp">AlertaRoblox.apk</div></div>
-          </div>
-          <p>Se o Android pedir, permita instalar apps desta fonte.</p>
-          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox.apk">Baixar para Android</a>
-        </div>
-        <div class="cartao baixar">
-          <div class="linha">
-            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#4FC3F7" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3Zm0 13 7.5 1.1v-7H3ZM11.5 4.3 21 3v8.5h-9.5Zm0 15.4L21 21v-8.5h-9.5Z"/></svg></div>
-            <div><h3>PC Windows</h3><div class="detalhe" id="infoPc">AlertaRoblox-Setup.exe</div></div>
-          </div>
-          <p>Se aparecer "O Windows protegeu o computador", clique em Mais informações › Executar assim mesmo.</p>
-          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox-Setup.exe">Baixar para Windows</a>
-        </div>
-      </div>
-    </div>
   </section>
 
   <!-- Logado -->
@@ -238,6 +217,30 @@
       <div class="frases-lista" id="listaFrases"></div>
     </div>
   </section>
+
+  <!-- Downloads: sempre visivel (visitante e logado) -->
+    <div class="secao" id="baixar">
+      <h2>Baixar</h2>
+      <p>Depois de instalados, os dois se atualizam sozinhos.</p>
+      <div class="grade">
+        <div class="cartao baixar">
+          <div class="linha">
+            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#43A047" aria-hidden="true"><path d="M17.6 9.48 19.44 6.3a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52ZM7 15.25A1.25 1.25 0 1 1 8.25 14 1.25 1.25 0 0 1 7 15.25Zm10 0A1.25 1.25 0 1 1 18.25 14 1.25 1.25 0 0 1 17 15.25Z"/></svg></div>
+            <div><h3>Celular Android</h3><div class="detalhe" id="infoApp">AlertaRoblox.apk</div></div>
+          </div>
+          <p>Se o Android pedir, permita instalar apps desta fonte.</p>
+          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox.apk">Baixar para Android</a>
+        </div>
+        <div class="cartao baixar">
+          <div class="linha">
+            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#4FC3F7" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3Zm0 13 7.5 1.1v-7H3ZM11.5 4.3 21 3v8.5h-9.5Zm0 15.4L21 21v-8.5h-9.5Z"/></svg></div>
+            <div><h3>PC Windows</h3><div class="detalhe" id="infoPc">AlertaRoblox-Setup.exe</div></div>
+          </div>
+          <p>Se aparecer "O Windows protegeu o computador", clique em Mais informações › Executar assim mesmo.</p>
+          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox-Setup.exe">Baixar para Windows</a>
+        </div>
+      </div>
+    </div>
 </main>
 
 <div class="container"><footer>Alerta Roblox · feito por OctavioKonzen · não é afiliado à Roblox Corporation nem ao Discord.</footer></div>
