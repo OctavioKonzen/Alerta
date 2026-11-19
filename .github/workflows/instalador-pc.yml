@@ -30,6 +30,14 @@ jobs:
           else { $v = "0.0.$env:GITHUB_RUN_NUMBER" }
           "APP_VERSION=$v" >> $env:GITHUB_ENV
 
+      - name: Colocar a versao no programa
+        shell: pwsh
+        run: |
+          $t = Get-Content pc/monitor.py -Raw -Encoding utf8
+          if ($t -notmatch 'VERSAO = "dev"') { Write-Host "::error::VERSAO nao encontrada no monitor.py"; exit 1 }
+          $t = $t.Replace('VERSAO = "dev"', "VERSAO = `"$env:APP_VERSION`"")
+          [IO.File]::WriteAllText("pc/monitor.py", $t, [Text.UTF8Encoding]::new($false))
+
       - name: Colocar URL e chave do Supabase no monitor
         env:
           SB_URL: ${{ vars.SUPABASE_URL }}
@@ -100,3 +108,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: saida/*.exe
+
+      # Atualizacao automatica: publica no repositorio publico de downloads
+      - name: Publicar para atualizacao automatica
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          ARQ=$(ls saida/*.exe | head -1)
+          bash .github/publicar.sh pc "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$ARQ" AlertaRoblox-Setup.exe

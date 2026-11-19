@@ -82,3 +82,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: saida/*.apk
+
+      # Atualizacao automatica: publica no repositorio publico de downloads
+      - name: Publicar para atualizacao automatica
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: bash .github/publicar.sh app "$APP_VERSION" "$GITHUB_RUN_NUMBER" "saida/AlertaRoblox-$APP_VERSION.apk" AlertaRoblox.apk

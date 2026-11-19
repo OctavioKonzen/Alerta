@@ -30,6 +30,7 @@ import platform
 import queue
 import re
 import shutil
+import tempfile
 import subprocess
 import sys
 import threading
@@ -64,6 +65,8 @@ ALERTA_TELA = False      # True = tambem pisca a tela do PC (F8 para parar)
 NOME_JOGADOR = ""        # vazio = descobre sozinho pelo log do Roblox
 LINK_SERVIDOR_PRIVADO = ""   # opcional: link do seu servidor privado (vai no alerta)
 
+ATUALIZAR_SOZINHO = True # baixa e instala versoes novas sozinho
+
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
 SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz"
@@ -79,7 +82,9 @@ else:
 os.makedirs(PASTA, exist_ok=True)
 CONFIG = os.path.join(PASTA, "config.json")
 ARQUIVO_LOG = os.path.join(PASTA, "alerta.log")
-USER_AGENT = "AlertaRoblox-PC/2.0"
+VERSAO = "dev"           # o build do GitHub troca pelo numero da versao
+URL_VERSAO_PC = "https://raw.githubusercontent.com/OctavioKonzen/Alerta-downloads/main/versao-pc.json"
+USER_AGENT = f"AlertaRoblox-PC/{VERSAO}"
 
 # Opcoes que o usuario pode mudar no config.json ("Editar frases e opcoes")
 OPCOES = {
@@ -91,6 +96,7 @@ OPCOES = {
     "alerta_tela": "ALERTA_TELA",
     "nome_jogador": "NOME_JOGADOR",
     "link_servidor_privado": "LINK_SERVIDOR_PRIVADO",
+    "atualizar_sozinho": "ATUALIZAR_SOZINHO",
 }
 
 try:  # evita problemas de escala (DPI) no Windows
@@ -713,6 +719,40 @@ class Monitor:
                 parar.wait(INTERVALO)
 
 
+# ----------------------------- atualizacao automatica ----------------------
+def versao_tupla(v):
+    return tuple(int(x) for x in re.findall(r"\d+", str(v))) or (0,)
+
+
+def procurar_atualizacao():
+    """Devolve as informacoes da versao nova (dict) ou None."""
+    if VERSAO == "dev":
+        return None
+    status, r = http(f"{URL_VERSAO_PC}?t={int(time.time())}", timeout=10)
+    if status != 200 or not isinstance(r, dict):
+        return None
+    url = str(r.get("url", ""))
+    if not url.startswith("https://github.com/OctavioKonzen/Alerta-downloads/"):
+        return None
+    if versao_tupla(r.get("versao", "0")) <= versao_tupla(VERSAO):
+        return None
+    return r
+
+
+def baixar_instalador(info):
+    """Baixa o instalador novo para a pasta temporaria. Devolve o caminho."""
+    destino = os.path.join(tempfile.gettempdir(), f"AlertaRoblox-Setup-{info['versao']}.exe")
+    parcial = destino + ".parcial"
+    req = urllib.request.Request(info["url"], headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=60) as resp, open(parcial, "wb") as f:
+        shutil.copyfileobj(resp, f, 1024 * 1024)
+    if os.path.getsize(parcial) < 5 * 1024 * 1024:
+        os.remove(parcial)
+        raise RuntimeError("arquivo baixado muito pequeno")
+    os.replace(parcial, destino)
+    return destino
+
+
 # ----------------------------- janela --------------------------------------
 # Interface moderna (CustomTkinter), com as cores do app do celular.
 COR = {
@@ -834,6 +874,7 @@ class App:
         self.monitor.iniciar()
         self.root.after(200, self._processar_filas)
         self.root.after(300, self._atualizar_status)
+        self.root.after(15_000, self._verificar_atualizacao)
         log("Alerta Roblox aberto.")
 
     # --- montagem da janela ---
@@ -888,7 +929,8 @@ class App:
         self.txt.configure(state="disabled")
 
         ctk.CTkLabel(r, text="Fechar a janela não para o alerta: ele continua no ícone perto do relógio. "
-                             "Para sair, clique com o botão direito no ícone › Sair.",
+                             "Para sair, clique com o botão direito no ícone › Sair."
+                             f"   ·   Versão {VERSAO}",
                      text_color=COR["fraco"], font=fonte(11), wraplength=700, justify="left").grid(
             row=4, column=0, sticky="w", padx=24, pady=(0, 14))
 
@@ -984,6 +1026,45 @@ class App:
         )
         self.icone_bandeja = pystray.Icon("AlertaRoblox", imagem_icone(), "Alerta Roblox", menu)
         threading.Thread(target=self.icone_bandeja.run, daemon=True).start()
+
+    # --- atualizacao automatica ---
+    def _verificar_atualizacao(self):
+        self.root.after(6 * 3600 * 1000, self._verificar_atualizacao)   # de novo em 6 horas
+        if not ATUALIZAR_SOZINHO or getattr(self, "atualizando", False):
+            return
+
+        def procurar_e_baixar():
+            info = procurar_atualizacao()
+            if not info:
+                return None
+            log(f"Versao nova {info['versao']} encontrada. Baixando...")
+            return info, baixar_instalador(info)
+
+        def fim(res, erro):
+            if erro:
+                log("Nao consegui atualizar agora (tento mais tarde):", erro)
+            elif res:
+                self.instalar_atualizacao(*res)
+        self.em_segundo_plano(procurar_e_baixar, fim)
+
+    def instalar_atualizacao(self, info, caminho):
+        """Roda o instalador em modo silencioso e fecha; o instalador reabre o programa."""
+        self.atualizando = True
+        log(f"Instalando a versao {info['versao']}. O Alerta Roblox reabre sozinho em instantes.")
+        try:
+            subprocess.Popen([caminho, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                             close_fds=True, creationflags=0x00000008 if os.name == "nt" else 0)
+        except Exception as erro:
+            self.atualizando = False
+            log("Falha ao abrir o instalador:", erro)
+            return
+        self.monitor.parar()
+        if self.icone_bandeja is not None:
+            try:
+                self.icone_bandeja.stop()
+            except Exception:
+                pass
+        self.root.after(500, lambda: os._exit(0))
 
     def mostrar(self):
         self.root.deiconify()

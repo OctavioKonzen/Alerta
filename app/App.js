@@ -8,8 +8,13 @@ import Login from './src/telas/Login';
 import Alertas from './src/telas/Alertas';
 import Pcs from './src/telas/Pcs';
 import Discord from './src/telas/Discord';
+import Atualizacao from './src/Atualizacao';
 
 export default function App() {
+  return <><Principal /><Atualizacao /></>;
+}
+
+function Principal() {
   const [sessao, setSessao] = useState(undefined);
   const [aba, setAba] = useState('alertas');
   const [aviso, setAviso] = useState(null);

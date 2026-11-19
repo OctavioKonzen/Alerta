@@ -35,10 +35,13 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 - **Pacote Android**: `com.octaviokonzen.alerta`. Esquema de link do app: `alertaroblox://` (volta do login com Discord).
 - **Discord**: um bot so, de todos. Edge Function `discord-bot` (Verify JWT DESLIGADO). Redirect do OAuth2: `https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot`.
 
+- **Atualização automática**: os builds publicam no repositório PÚBLICO `OctavioKonzen/Alerta-downloads` (script `.github/publicar.sh`): Release `pc-vX`/`app-vX`, Release fixa `ultima` (links de download para os jogadores) e `versao-pc.json`/`versao-app.json` na branch `main`. O PC (`VERSAO`, trocada no build) confere a cada 6 h, baixa e instala sozinho (`/VERYSILENT`, o instalador reabre o programa). O app (`src/Atualizacao.js`) compara `versionCode`, baixa o APK e abre o instalador do Android.
+
 ## Segredos (NUNCA colocar no repo nem em mensagens)
 - `FIREBASE_SERVICE_ACCOUNT`: segredo da Edge Function no Supabase (JSON da conta de serviço do Firebase).
 - `ANDROID_KEYSTORE_PASSWORD`: segredo do GitHub Actions, a senha de `app/release.p12` (alias `alerta`). Sem ela não dá para atualizar o app por cima.
 - `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`: segredos das Edge Functions no Supabase (o token do bot e usado pelas duas funcoes).
+- `RELEASES_TOKEN`: segredo do GitHub Actions, token com acesso de escrita só ao `Alerta-downloads`.
 - A chave `sb_secret_...` / service_role do Supabase não é usada fora da Edge Function.
 
 ## Banco (Supabase)
@@ -62,5 +65,6 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [x] Primeiro build dos workflows (APK 1.0.1 e .exe) deu certo
 - [x] Bot do Discord: `0003_discord.sql`, bot criado (app "Tortilha"), segredos no Supabase, `discord-bot` e `smooth-responder` publicadas, APK novo gerado
 - [ ] PC com janela + login pelo Discord: rodar `0004_pc_discord.sql`, publicar a `discord-bot` nova, gerar instalador novo
+- [ ] Atualização automática: criar o repositório público `Alerta-downloads`, o token e o segredo `RELEASES_TOKEN`
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).
