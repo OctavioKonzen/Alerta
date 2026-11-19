@@ -1,5 +1,5 @@
-// Atualizacao automatica do app: ao abrir, confere se ha versao nova no
-// repositorio publico de downloads, baixa o APK sozinho e abre o instalador.
+// Atualizacao automatica do app: ao abrir, confere se ha versao nova na
+// Release "ultima" do GitHub, baixa o APK sozinho e abre o instalador.
 // (Fora da Play Store o Android sempre pede para a pessoa tocar em "Instalar".)
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
@@ -8,8 +8,8 @@ import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { cores, s } from './estilo';
 
-const URL_VERSAO = 'https://raw.githubusercontent.com/OctavioKonzen/Alerta-downloads/main/versao-app.json';
-const ORIGEM_OK = 'https://github.com/OctavioKonzen/Alerta-downloads/';
+const ORIGEM_OK = 'https://github.com/OctavioKonzen/Alerta/releases/download/ultima/';
+const URL_VERSAO = `${ORIGEM_OK}versao-app.json`;
 
 async function abrirInstalador(arquivo) {
   const uri = await FileSystem.getContentUriAsync(arquivo);

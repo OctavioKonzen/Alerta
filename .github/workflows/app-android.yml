@@ -83,8 +83,8 @@ jobs:
         with:
           files: saida/*.apk
 
-      # Atualizacao automatica: publica no repositorio publico de downloads
+      # Publica na Release "ultima" (download dos jogadores + atualizacao automatica)
       - name: Publicar para atualizacao automatica
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: bash .github/publicar.sh app "$APP_VERSION" "$GITHUB_RUN_NUMBER" "saida/AlertaRoblox-$APP_VERSION.apk" AlertaRoblox.apk

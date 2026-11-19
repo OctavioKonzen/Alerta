@@ -27,15 +27,15 @@ jobs:
         shell: pwsh
         run: |
           if ($env:GITHUB_REF_TYPE -eq "tag") { $v = $env:GITHUB_REF_NAME.TrimStart("v") }
-          else { $v = "0.0.$env:GITHUB_RUN_NUMBER" }
+          else { $v = "1.0.$env:GITHUB_RUN_NUMBER" }
           "APP_VERSION=$v" >> $env:GITHUB_ENV
 
       - name: Colocar a versao no programa
         shell: pwsh
         run: |
           $t = Get-Content pc/monitor.py -Raw -Encoding utf8
-          if ($t -notmatch 'VERSAO = "dev"') { Write-Host "::error::VERSAO nao encontrada no monitor.py"; exit 1 }
-          $t = $t.Replace('VERSAO = "dev"', "VERSAO = `"$env:APP_VERSION`"")
+          if ($t -notmatch 'VERSAO = "dev"' -or $t -notmatch 'CODIGO = 0 ') { Write-Host "::error::VERSAO/CODIGO nao encontrados no monitor.py"; exit 1 }
+          $t = $t.Replace('VERSAO = "dev"', "VERSAO = `"$env:APP_VERSION`"").Replace('CODIGO = 0 ', "CODIGO = $env:GITHUB_RUN_NUMBER ")
           [IO.File]::WriteAllText("pc/monitor.py", $t, [Text.UTF8Encoding]::new($false))
 
       - name: Colocar URL e chave do Supabase no monitor
@@ -109,11 +109,11 @@ jobs:
         with:
           files: saida/*.exe
 
-      # Atualizacao automatica: publica no repositorio publico de downloads
+      # Publica na Release "ultima" (download dos jogadores + atualizacao automatica)
       - name: Publicar para atualizacao automatica
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           ARQ=$(ls saida/*.exe | head -1)
           bash .github/publicar.sh pc "$APP_VERSION" "$GITHUB_RUN_NUMBER" "$ARQ" AlertaRoblox-Setup.exe

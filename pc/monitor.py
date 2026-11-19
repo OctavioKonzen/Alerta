@@ -83,7 +83,9 @@ os.makedirs(PASTA, exist_ok=True)
 CONFIG = os.path.join(PASTA, "config.json")
 ARQUIVO_LOG = os.path.join(PASTA, "alerta.log")
 VERSAO = "dev"           # o build do GitHub troca pelo numero da versao
-URL_VERSAO_PC = "https://raw.githubusercontent.com/OctavioKonzen/Alerta-downloads/main/versao-pc.json"
+CODIGO = 0               # numero do build (sempre aumenta); o build troca
+URL_DOWNLOADS = "https://github.com/OctavioKonzen/Alerta/releases/download/ultima/"
+URL_VERSAO_PC = URL_DOWNLOADS + "versao-pc.json"
 USER_AGENT = f"AlertaRoblox-PC/{VERSAO}"
 
 # Opcoes que o usuario pode mudar no config.json ("Editar frases e opcoes")
@@ -720,21 +722,20 @@ class Monitor:
 
 
 # ----------------------------- atualizacao automatica ----------------------
-def versao_tupla(v):
-    return tuple(int(x) for x in re.findall(r"\d+", str(v))) or (0,)
-
-
 def procurar_atualizacao():
     """Devolve as informacoes da versao nova (dict) ou None."""
-    if VERSAO == "dev":
+    if VERSAO == "dev" or CODIGO <= 0:
         return None
     status, r = http(f"{URL_VERSAO_PC}?t={int(time.time())}", timeout=10)
     if status != 200 or not isinstance(r, dict):
         return None
     url = str(r.get("url", ""))
-    if not url.startswith("https://github.com/OctavioKonzen/Alerta-downloads/"):
+    if not url.startswith(URL_DOWNLOADS):
         return None
-    if versao_tupla(r.get("versao", "0")) <= versao_tupla(VERSAO):
+    try:
+        if int(r.get("codigo", 0)) <= CODIGO:
+            return None
+    except (TypeError, ValueError):
         return None
     return r
 
