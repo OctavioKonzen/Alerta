@@ -42,18 +42,29 @@ export default function Atualizacao() {
 
         const destino = `${FileSystem.cacheDirectory}AlertaRoblox-${info.versao}.apk`;
         const ja = await FileSystem.getInfoAsync(destino);
-        if (!ja.exists || ja.size < 1_000_000) {
-          const download = FileSystem.createDownloadResumable(info.url, destino, {}, (p) => {
+        if (!ja.exists) {
+          // Baixa num arquivo temporario e so troca o nome quando terminar inteiro.
+          const parcial = `${destino}.parcial`;
+          await FileSystem.deleteAsync(parcial, { idempotent: true });
+          let esperado = 0;
+          const download = FileSystem.createDownloadResumable(info.url, parcial, {}, (p) => {
             if (p.totalBytesExpectedToWrite > 0) {
+              esperado = p.totalBytesExpectedToWrite;
               setProgresso(p.totalBytesWritten / p.totalBytesExpectedToWrite);
             }
           });
-          await download.downloadAsync();
+          const r = await download.downloadAsync();
+          const feito = await FileSystem.getInfoAsync(parcial);
+          if (!r || r.status !== 200 || !feito.exists || feito.size < 1_000_000 || (esperado && feito.size !== esperado)) {
+            await FileSystem.deleteAsync(parcial, { idempotent: true });
+            throw new Error('download incompleto');
+          }
+          await FileSystem.moveAsync({ from: parcial, to: destino });
         }
         if (cancelado) return;
         setArquivo(destino);
         setProgresso(1);
-        await abrirInstalador(destino);
+        // Nao abre o instalador sozinho: a pessoa toca em "Instalar agora".
       } catch (e) {
         if (!cancelado) setErro('Nao consegui baixar a atualizacao. Tente de novo mais tarde.');
       }
@@ -72,7 +83,7 @@ export default function Atualizacao() {
 
           {erro ? <Text style={s.erro}>{erro}</Text> : arquivo ? (
             <Text style={{ color: cores.texto, lineHeight: 20 }}>
-              Pronto! Toque em "Instalar" na tela do Android.{'\n'}
+              Pronto! Toque em "Instalar agora" e depois em "Instalar" na tela do Android.{'\n'}
               Se o Android pedir, permita instalar apps desta fonte.
             </Text>
           ) : (
@@ -88,7 +99,8 @@ export default function Atualizacao() {
           )}
 
           {arquivo ? (
-            <TouchableOpacity style={s.botao} onPress={() => abrirInstalador(arquivo).catch(() => {})}>
+            <TouchableOpacity style={s.botao} onPress={() => abrirInstalador(arquivo)
+              .catch(() => setErro('Nao consegui abrir o instalador. Baixe pelo site: octaviokonzen.github.io/Alerta'))}>
               <Text style={s.botaoTexto}>Instalar agora</Text>
             </TouchableOpacity>
           ) : null}
