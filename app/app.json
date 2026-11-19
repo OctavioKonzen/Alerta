@@ -30,8 +30,10 @@
     ],
     "extra": {
       "supabaseUrl": "https://vtyxkowxnesclwtndbog.supabase.co",
-      "supabaseAnonKey": "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz"
+      "supabaseAnonKey": "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz",
+      "funcaoDiscord": "discord-bot"
     },
-    "icon": "./assets/icon.png"
+    "icon": "./assets/icon.png",
+    "scheme": "alertaroblox"
   }
 }

@@ -3,6 +3,8 @@
 // Em Settings da funcao, deixe "Verify JWT" DESLIGADO (o PC usa a chave "x-chave-pc").
 // Segredo necessario (Edge Functions > Secrets):
 //   FIREBASE_SERVICE_ACCOUNT = conteudo inteiro do JSON da conta de servico do Firebase
+// Opcional (para mandar tambem no Discord, ver supabase/functions/discord-bot):
+//   DISCORD_BOT_TOKEN = token do bot do Discord
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -133,6 +135,75 @@ async function enviarFcm(token: string, titulo: string, corpo: string, dados: Re
   return "erro";
 }
 
+async function enviarPush(userId: string, alertaId: number, alerta: Record<string, any>) {
+  const { data: tokens } = await supa.from("push_tokens").select("token").eq("user_id", userId);
+  if (!tokens?.length) return { enviados: 0, aviso: "nenhum celular logado" };
+
+  const titulo = alerta.teste ? "Teste do Alerta Roblox" : `🚨 ${alerta.frase ?? "Mensagem detectada"}`;
+  const texto_ = [
+    alerta.mensagem,
+    alerta.jogador ? `Jogador: ${alerta.jogador}` : null,
+    alerta.job_id ? `Servidor: ${alerta.job_id}` : null,
+  ].filter(Boolean).join("\n") || "Abra o app para ver";
+  const dados = { alerta_id: String(alertaId), link: alerta.link ?? "" };
+
+  try {
+    const resultados = await Promise.all(
+      tokens.map((t) => enviarFcm(t.token, titulo, texto_, dados).then((r) => ({ t: t.token, r }))),
+    );
+    const mortos = resultados.filter((x) => x.r === "morto").map((x) => x.t);
+    if (mortos.length) await supa.from("push_tokens").delete().in("token", mortos);
+    return { enviados: resultados.filter((x) => x.r === "ok").length };
+  } catch (e) {
+    console.error(e);
+    return { enviados: 0, aviso: "alerta salvo, mas o push falhou: " + String(e) };
+  }
+}
+
+// ---------- Discord (canais escolhidos no app, aba Discord) ----------
+async function enviarDiscord(userId: string, a: Record<string, unknown>) {
+  const token = Deno.env.get("DISCORD_BOT_TOKEN")?.trim();
+  if (!token) return 0;
+  const { data: canais } = await supa.from("discord_canais").select("id, channel_id").eq("user_id", userId);
+  if (!canais?.length) return 0;
+
+  const campos = [
+    a.jogador ? { name: "Jogador", value: String(a.jogador), inline: true } : null,
+    a.job_id ? { name: "Servidor (Job ID)", value: "`" + String(a.job_id) + "`", inline: false } : null,
+  ].filter(Boolean);
+  const mensagem = {
+    allowed_mentions: { parse: [] },
+    embeds: [{
+      title: a.teste ? "Teste do Alerta Roblox" : `🚨 ${a.frase ?? "Mensagem detectada"}`,
+      description: (a.mensagem as string | null) ?? undefined,
+      color: a.teste ? 0x8b93a3 : 0xe53935,
+      fields: campos,
+      timestamp: new Date().toISOString(),
+    }],
+    components: a.link ? [{
+      type: 1,
+      components: [{ type: 2, style: 5, label: "Entrar no servidor", url: String(a.link) }],
+    }] : [],
+  };
+
+  let enviados = 0;
+  await Promise.all(canais.map(async (c) => {
+    const r = await fetch(`https://discord.com/api/v10/channels/${c.channel_id}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(mensagem),
+    });
+    if (r.ok) { enviados++; return; }
+    const erro = await r.json().catch(() => ({}));
+    console.error("Discord falhou", r.status, JSON.stringify(erro));
+    // 10003 = canal apagado; 10004 = bot saiu do servidor
+    if (erro?.code === 10003 || erro?.code === 10004) {
+      await supa.from("discord_canais").delete().eq("id", c.id);
+    }
+  }));
+  return enviados;
+}
+
 // ---------- Rota principal ----------
 Deno.serve(async (req) => {
   if (req.method !== "POST") return resposta({ erro: "use POST" }, 405);
@@ -164,29 +235,10 @@ Deno.serve(async (req) => {
   if (error) return resposta({ erro: "falha ao salvar" }, 500);
   await supa.from("pc_keys").update({ last_used_at: new Date().toISOString() }).eq("id", pc.id);
 
-  // 4) Push para todos os celulares da conta
-  const { data: tokens } = await supa.from("push_tokens").select("token").eq("user_id", pc.user_id);
-  if (!tokens?.length) return resposta({ ok: true, enviados: 0, aviso: "nenhum celular logado" });
-
-  const titulo = alerta.teste ? "Teste do Alerta Roblox" : `🚨 ${alerta.frase ?? "Mensagem detectada"}`;
-  const texto_ = [
-    alerta.mensagem,
-    alerta.jogador ? `Jogador: ${alerta.jogador}` : null,
-    alerta.job_id ? `Servidor: ${alerta.job_id}` : null,
-  ].filter(Boolean).join("\n") || "Abra o app para ver";
-  const dados = { alerta_id: String(salvo.id), link: alerta.link ?? "" };
-
-  let enviados = 0;
-  try {
-    const resultados = await Promise.all(
-      tokens.map((t) => enviarFcm(t.token, titulo, texto_, dados).then((r) => ({ t: t.token, r }))),
-    );
-    const mortos = resultados.filter((x) => x.r === "morto").map((x) => x.t);
-    enviados = resultados.filter((x) => x.r === "ok").length;
-    if (mortos.length) await supa.from("push_tokens").delete().in("token", mortos);
-  } catch (e) {
-    console.error(e);
-    return resposta({ ok: true, enviados: 0, aviso: "alerta salvo, mas o push falhou: " + String(e) });
-  }
-  return resposta({ ok: true, enviados });
+  // 4) Push para os celulares e mensagem nos canais do Discord, ao mesmo tempo
+  const [celular, discord] = await Promise.all([
+    enviarPush(pc.user_id, salvo.id, alerta),
+    enviarDiscord(pc.user_id, alerta).catch((e) => { console.error(e); return 0; }),
+  ]);
+  return resposta({ ok: true, ...celular, discord });
 });

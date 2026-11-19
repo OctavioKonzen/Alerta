@@ -338,7 +338,9 @@ def enviar_alerta(frase, mensagem, teste=False, esperar=False):
             if status == 200:
                 env = r.get("enviados", 0) if isinstance(r, dict) else 0
                 aviso = r.get("aviso", "") if isinstance(r, dict) else ""
-                print(f"Alerta enviado ({env} celular(es)). {aviso}".strip())
+                disc = r.get("discord", 0) if isinstance(r, dict) else 0
+                extra = f", {disc} canal(is) do Discord" if disc else ""
+                print(f"Alerta enviado ({env} celular(es){extra}). {aviso}".strip())
             elif status == 401:
                 print("Chave do PC invalida (PC removido no app?). Rode: python monitor.py conectar")
             elif status == 429:

@@ -7,6 +7,7 @@ import { cores, s } from './src/estilo';
 import Login from './src/telas/Login';
 import Alertas from './src/telas/Alertas';
 import Pcs from './src/telas/Pcs';
+import Discord from './src/telas/Discord';
 
 export default function App() {
   const [sessao, setSessao] = useState(undefined);
@@ -49,11 +50,11 @@ export default function App() {
       {aviso && <Text style={[s.erro, { paddingHorizontal: 16, marginTop: 8 }]}>{aviso}</Text>}
 
       <View style={{ flex: 1 }}>
-        {aba === 'alertas' ? <Alertas userId={userId} /> : <Pcs />}
+        {aba === 'alertas' ? <Alertas userId={userId} /> : aba === 'pcs' ? <Pcs /> : <Discord />}
       </View>
 
       <View style={{ flexDirection: 'row', borderTopColor: cores.borda, borderTopWidth: 1 }}>
-        {[['alertas', 'Alertas'], ['pcs', 'Meus PCs']].map(([id, nome]) => (
+        {[['alertas', 'Alertas'], ['pcs', 'Meus PCs'], ['discord', 'Discord']].map(([id, nome]) => (
           <TouchableOpacity key={id} onPress={() => setAba(id)}
             style={{ flex: 1, padding: 16, alignItems: 'center' }}>
             <Text style={{ color: aba === id ? cores.destaque : cores.fraco, fontWeight: '700' }}>{nome}</Text>

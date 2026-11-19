@@ -21,7 +21,8 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 | `pc/instalador/` | Inno Setup (`AlertaRoblox.iss`) + `icone.ico` |
 | `pc/requirements.txt` | Dependências do PC (usadas no build do .exe) |
 | `supabase/migrations/` | SQL do banco (rodado à mão no SQL Editor) |
-| `supabase/functions/send-alert/index.ts` | Edge Function (Deno) que recebe o alerta e envia o push pelo Firebase |
+| `supabase/functions/send-alert/index.ts` | Edge Function (Deno) que recebe o alerta e envia o push pelo Firebase e a mensagem nos canais do Discord |
+| `supabase/functions/discord-bot/index.ts` | Edge Function do painel do Discord (aba Discord do app): login com Discord, lista servidores em comum com o bot, admin escolhe o canal |
 | `app/` | App Android em React Native/Expo SDK 53 (JS, sem TypeScript, sem react-navigation) |
 | `.github/workflows/instalador-pc.yml` | Gera `AlertaRoblox-Setup-x.y.z.exe` (Windows, PyInstaller + Inno Setup) |
 | `.github/workflows/app-android.yml` | Gera e assina o APK (expo prebuild + gradle + apksigner) |
@@ -31,15 +32,17 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 - **Chave pública** (publishable): está em `pc/monitor.py` e `app/app.json`.
 - **Edge Function publicada com o nome `smooth-responder`** (não `send-alert`; o nome não pode ser trocado). O PC usa `FUNCAO_ALERTA = "smooth-responder"`. "Verify JWT" está DESLIGADO: o PC se autentica pelo cabeçalho `x-chave-pc`.
 - **Firebase**: projeto `alerta-fd83a`; app Android `com.octaviokonzen.alerta`; `app/google-services.json` está no repo (não é secreto).
-- **Pacote Android**: `com.octaviokonzen.alerta`.
+- **Pacote Android**: `com.octaviokonzen.alerta`. Esquema de link do app: `alertaroblox://` (volta do login com Discord).
+- **Discord**: um bot so, de todos. Edge Function `discord-bot` (Verify JWT DESLIGADO). Redirect do OAuth2: `https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot`.
 
 ## Segredos (NUNCA colocar no repo nem em mensagens)
 - `FIREBASE_SERVICE_ACCOUNT`: segredo da Edge Function no Supabase (JSON da conta de serviço do Firebase).
 - `ANDROID_KEYSTORE_PASSWORD`: segredo do GitHub Actions, a senha de `app/release.p12` (alias `alerta`). Sem ela não dá para atualizar o app por cima.
+- `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`: segredos das Edge Functions no Supabase (o token do bot e usado pelas duas funcoes).
 - A chave `sb_secret_...` / service_role do Supabase não é usada fora da Edge Function.
 
 ## Banco (Supabase)
-Tabelas `pc_keys` (hash da chave do PC), `push_tokens` (token FCM do celular) e `alerts` (histórico, máx. 200 por conta). Todas com RLS: cada usuário vê só o que é dele.
+Tabelas `pc_keys` (hash da chave do PC), `push_tokens` (token FCM do celular), `alerts` (histórico, máx. 200 por conta), `discord_contas` (tokens do Discord, só a Edge Function lê), `discord_estados` (login em andamento) e `discord_canais` (canal escolhido por servidor). Todas com RLS: cada usuário vê só o que é dele.
 Funções RPC: `criar_chave_pc(p_nome)` (máx. 5 PCs por conta) e `registrar_token(p_token)` (aceita token FCM).
 Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para o dono rodar no SQL Editor. Não há CLI do Supabase configurada.
 
@@ -55,7 +58,8 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 
 ## Estado atual / pendências
 - [ ] Dono rodar o SQL `0002_token_firebase.sql` (se ainda não rodou)
-- [ ] Criar o segredo `ANDROID_KEYSTORE_PASSWORD` no GitHub
-- [ ] Primeiro build dos workflows (APK e .exe). Ainda não foram testados de verdade.
+- [x] Criar o segredo `ANDROID_KEYSTORE_PASSWORD` no GitHub
+- [x] Primeiro build dos workflows (APK 1.0.1 e .exe) deu certo
+- [ ] Bot do Discord: rodar `0003_discord.sql`, criar o bot no Developer Portal, segredos no Supabase, publicar `discord-bot` e a nova `smooth-responder`, gerar APK novo
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).
