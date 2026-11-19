@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alerta Roblox · Painel do bot</title>
+<meta name="description" content="Receba no celular e no Discord quando a mensagem aparecer no Roblox. Painel do bot e downloads.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23E53935'/%3E%3Crect x='28' y='14' width='8' height='26' rx='3' fill='white'/%3E%3Crect x='28' y='45' width='8' height='8' rx='3' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fundo: #0f1115; --fundo2: #13161c; --cartao: #1a1d24; --borda: #2a2f3a; --texto: #f2f4f8;
+    --fraco: #8b93a3; --destaque: #E53935; --destaque2: #c62828; --ok: #43A047; --atencao: #F9A825;
+    --sec: #262a33; --sec2: #323743; --discord: #5865F2; --discord2: #4752c4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, #2a1416 0%, transparent 60%), var(--fundo);
+    color: var(--texto); font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .container { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+
+  /* topo */
+  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px);
+        background: rgba(15,17,21,.75); border-bottom: 1px solid rgba(42,47,58,.6); }
+  nav .container { display: flex; align-items: center; gap: 12px; height: 64px; }
+  .marca { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; text-decoration: none; }
+  .ponto { width: 14px; height: 14px; border-radius: 50%; background: var(--destaque);
+           box-shadow: 0 0 0 4px rgba(229,57,53,.18), 0 0 18px rgba(229,57,53,.6); }
+  .espaco { flex: 1; }
+  .usuario { display: none; align-items: center; gap: 10px; color: var(--fraco); font-size: 14px; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--discord); color: #fff;
+            display: grid; place-items: center; font-weight: 700; }
+
+  /* botoes */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; cursor: pointer;
+         border-radius: 12px; padding: 11px 18px; font: 600 14px Inter, system-ui, sans-serif; color: var(--texto);
+         background: var(--sec); text-decoration: none; transition: background .15s, transform .05s; white-space: nowrap; }
+  .btn:hover { background: var(--sec2); }
+  .btn:active { transform: translateY(1px); }
+  .btn[disabled] { opacity: .55; cursor: default; }
+  .btn.pri { background: var(--destaque); color: #fff; }
+  .btn.pri:hover { background: var(--destaque2); }
+  .btn.discord { background: var(--discord); color: #fff; }
+  .btn.discord:hover { background: var(--discord2); }
+  .btn.perigo { color: #ff7b7b; }
+  .btn.perigo:hover { background: #3a2226; }
+  .btn.grande { padding: 14px 22px; font-size: 16px; border-radius: 14px; }
+  .btn.peq { padding: 8px 12px; font-size: 13px; border-radius: 10px; }
+  .btn svg { width: 20px; height: 20px; }
+
+  /* inicio */
+  .hero { padding: 72px 0 40px; display: grid; gap: 28px; }
+  .selo { display: inline-flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 999px;
+          background: rgba(229,57,53,.12); color: #ff8a80; font-size: 13px; font-weight: 600; width: fit-content; }
+  h1 { font-size: clamp(32px, 5.5vw, 56px); line-height: 1.05; margin: 0; letter-spacing: -0.02em; font-weight: 800; }
+  h1 span { color: var(--destaque); }
+  .sub { color: var(--fraco); font-size: 18px; line-height: 1.55; max-width: 620px; margin: 0; }
+  .acoes { display: flex; gap: 12px; flex-wrap: wrap; }
+  h2 { font-size: 24px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .secao { padding: 28px 0; }
+  .secao > p { color: var(--fraco); margin: 0 0 18px; }
+  .grade { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .cartao { background: var(--cartao); border: 1px solid var(--borda); border-radius: 16px; padding: 18px; }
+  .passo .num { width: 30px; height: 30px; border-radius: 50%; background: var(--sec2); display: grid; place-items: center;
+                font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+  .passo h3, .baixar h3 { margin: 0 0 6px; font-size: 16px; }
+  .passo p, .baixar p { margin: 0; color: var(--fraco); font-size: 14px; line-height: 1.5; }
+  .baixar { display: flex; flex-direction: column; gap: 14px; }
+  .baixar .linha { display: flex; gap: 14px; align-items: center; }
+  .icone-caixa { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: var(--sec); flex: none; }
+  .icone-caixa svg { width: 26px; height: 26px; }
+  .detalhe { color: var(--fraco); font-size: 12px; }
+
+  /* painel */
+  #painel { display: none; padding: 36px 0 60px; }
+  .painel-topo { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  .painel-topo .espaco { min-width: 10px; }
+  .servidores { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .servidor { display: flex; flex-direction: column; gap: 14px; }
+  .servidor .cab { display: flex; gap: 12px; align-items: center; min-width: 0; }
+  .servidor .nome { font-weight: 700; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .icone-servidor { width: 48px; height: 48px; border-radius: 50%; background: var(--sec2); flex: none; object-fit: cover;
+                    display: grid; place-items: center; font-weight: 700; font-size: 18px; }
+  .estado { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fraco); margin-top: 3px; }
+  .estado.ok { color: #66bb6a; }
+  .estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .servidor .botoes { display: flex; gap: 8px; margin-top: auto; }
+  .servidor .botoes .btn { flex: 1; }
+  .vazio { text-align: center; padding: 48px 20px; color: var(--fraco); }
+  .vazio h3 { color: var(--texto); margin: 0 0 8px; }
+  .esqueleto { height: 150px; border-radius: 16px; background: linear-gradient(90deg, var(--cartao) 0%, #20242c 50%, var(--cartao) 100%);
+               background-size: 200% 100%; animation: brilho 1.2s infinite; border: 1px solid var(--borda); }
+  @keyframes brilho { to { background-position: -200% 0; } }
+
+  /* janela de canais */
+  .fundo-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center;
+                 justify-content: center; padding: 16px; z-index: 50; }
+  .modal { width: 100%; max-width: 420px; max-height: 80vh; display: flex; flex-direction: column; background: var(--fundo2);
+           border: 1px solid var(--borda); border-radius: 18px; padding: 20px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .modal h3 { margin: 0; font-size: 18px; }
+  .modal .detalhe { margin: 4px 0 14px; font-size: 13px; }
+  .canais { overflow: auto; display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .canal { text-align: left; background: transparent; border: 0; color: var(--texto); padding: 11px 12px; border-radius: 10px;
+           font: 500 15px Inter, system-ui, sans-serif; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+  .canal:hover { background: var(--sec); }
+  .canal .hash { color: var(--fraco); font-size: 18px; }
+  .canal.atual { background: var(--sec2); color: #66bb6a; }
+
+  /* avisos */
+  #avisos { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column;
+            gap: 8px; z-index: 60; width: min(92vw, 460px); }
+  .aviso { background: var(--cartao); border: 1px solid var(--borda); border-left: 4px solid var(--ok); border-radius: 12px;
+           padding: 12px 14px; font-size: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); animation: entrar .2s ease-out; }
+  .aviso.erro { border-left-color: var(--destaque); }
+  @keyframes entrar { from { opacity: 0; transform: translateY(8px); } }
+
+  footer { color: var(--fraco); font-size: 13px; padding: 30px 0 40px; border-top: 1px solid var(--borda); margin-top: 20px; }
+
+  @media (max-width: 560px) {
+    .hero { padding-top: 44px; }
+    .usuario .nome-usuario { display: none; }
+    .acoes .btn { flex: 1; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a class="marca" href="./"><span class="ponto"></span> Alerta Roblox</a>
+    <div class="espaco"></div>
+    <div class="usuario" id="usuario">
+      <span class="avatar" id="avatar">?</span>
+      <span class="nome-usuario" id="nomeUsuario"></span>
+      <button class="btn peq" id="btnSair">Sair</button>
+    </div>
+    <button class="btn discord peq" id="btnEntrarTopo">Entrar</button>
+  </div>
+</nav>
+
+<main class="container">
+  <!-- Visitante -->
+  <section id="inicio">
+    <div class="hero">
+      <span class="selo">● Painel do bot do Discord</span>
+      <h1>Saiba na hora quando a <span>mensagem</span> aparecer no Roblox.</h1>
+      <p class="sub">O PC lê o chat do jogo e avisa no seu celular e no canal do seu servidor do Discord,
+        com o nome do jogador e o link para entrar no servidor.</p>
+      <div class="acoes">
+        <button class="btn discord grande" id="btnEntrar">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.2a18.3 18.3 0 0 0-5.5 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18a19.9 19.9 0 0 0 6 3l1.3-2a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2a19.8 19.8 0 0 0 6-3c.5-5.1-.8-9.6-3.6-13.6ZM8.5 15.3c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm7 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg>
+          Entrar com Discord
+        </button>
+        <a class="btn grande" href="#baixar">Baixar o app e o PC</a>
+      </div>
+    </div>
+
+    <div class="secao">
+      <h2>Como funciona</h2>
+      <p>Três passos e pronto.</p>
+      <div class="grade">
+        <div class="cartao passo"><div class="num">1</div><h3>Instale o app</h3>
+          <p>Crie sua conta no app do celular e, na aba Discord, toque em <b>Conectar com Discord</b>.</p></div>
+        <div class="cartao passo"><div class="num">2</div><h3>Instale no PC</h3>
+          <p>Abra o Alerta Roblox, conecte com o Discord e marque a área do chat do jogo.</p></div>
+        <div class="cartao passo"><div class="num">3</div><h3>Escolha o canal</h3>
+          <p>Adicione o bot ao seu servidor e, aqui no painel, escolha o canal que recebe os alertas.</p></div>
+      </div>
+    </div>
+
+    <div class="secao" id="baixar">
+      <h2>Baixar</h2>
+      <p>Depois de instalados, os dois se atualizam sozinhos.</p>
+      <div class="grade">
+        <div class="cartao baixar">
+          <div class="linha">
+            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#43A047" aria-hidden="true"><path d="M17.6 9.48 19.44 6.3a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52ZM7 15.25A1.25 1.25 0 1 1 8.25 14 1.25 1.25 0 0 1 7 15.25Zm10 0A1.25 1.25 0 1 1 18.25 14 1.25 1.25 0 0 1 17 15.25Z"/></svg></div>
+            <div><h3>Celular Android</h3><div class="detalhe" id="infoApp">AlertaRoblox.apk</div></div>
+          </div>
+          <p>Se o Android pedir, permita instalar apps desta fonte.</p>
+          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox.apk">Baixar para Android</a>
+        </div>
+        <div class="cartao baixar">
+          <div class="linha">
+            <div class="icone-caixa"><svg viewBox="0 0 24 24" fill="#4FC3F7" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3Zm0 13 7.5 1.1v-7H3ZM11.5 4.3 21 3v8.5h-9.5Zm0 15.4L21 21v-8.5h-9.5Z"/></svg></div>
+            <div><h3>PC Windows</h3><div class="detalhe" id="infoPc">AlertaRoblox-Setup.exe</div></div>
+          </div>
+          <p>Se aparecer "O Windows protegeu o computador", clique em Mais informações › Executar assim mesmo.</p>
+          <a class="btn pri" href="https://github.com/OctavioKonzen/Alerta/releases/download/ultima/AlertaRoblox-Setup.exe">Baixar para Windows</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Logado -->
+  <section id="painel">
+    <div class="painel-topo">
+      <div>
+        <h2>Seus servidores</h2>
+        <div class="detalhe">Aparecem os servidores onde você e o bot estão. Administradores escolhem o canal dos alertas.</div>
+      </div>
+      <div class="espaco"></div>
+      <button class="btn" id="btnAtualizar" title="Atualizar">↻ Atualizar</button>
+      <a class="btn pri" id="btnConvite" target="_blank" rel="noopener">+ Adicionar bot</a>
+    </div>
+    <div class="servidores" id="servidores"></div>
+  </section>
+</main>
+
+<div class="container"><footer>Alerta Roblox · feito por OctavioKonzen · não é afiliado à Roblox Corporation nem ao Discord.</footer></div>
+
+<div class="fundo-modal" id="fundoModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="tituloModal">
+    <h3 id="tituloModal"></h3>
+    <div class="detalhe" id="detalheModal"></div>
+    <div class="canais" id="listaCanais"></div>
+    <button class="btn" id="btnFecharModal">Cancelar</button>
+  </div>
+</div>
+<div id="avisos"></div>
+
+<script>
+(() => {
+  const FUNCAO = "https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot";
+  const CHAVE_PUBLICA = "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz";
+  const CHAVE_SESSAO = "alerta_sessao";
+  const $ = (id) => document.getElementById(id);
+
+  function lerSessao() { try { return localStorage.getItem(CHAVE_SESSAO); } catch { return null; } }
+  function salvarSessao(v) { try { v ? localStorage.setItem(CHAVE_SESSAO, v) : localStorage.removeItem(CHAVE_SESSAO); } catch {} }
+
+  // Cria elementos sem usar innerHTML (nomes vindos do Discord sao texto puro).
+  function el(tag, props = {}, ...filhos) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "class") e.className = v;
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+      else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v === true ? "" : v);
+    }
+    for (const f of filhos.flat()) if (f !== null && f !== undefined) e.append(f);
+    return e;
+  }
+
+  function aviso(texto, erro = false) {
+    const a = el("div", { class: "aviso" + (erro ? " erro" : "") }, texto);
+    $("avisos").append(a);
+    setTimeout(() => a.remove(), erro ? 7000 : 4000);
+  }
+
+  async function chamar(acao, extra = {}) {
+    const headers = { "Content-Type": "application/json", apikey: CHAVE_PUBLICA };
+    const sessao = lerSessao();
+    if (sessao) headers["x-sessao-web"] = sessao;
+    let r;
+    try {
+      r = await fetch(FUNCAO, { method: "POST", headers, body: JSON.stringify({ acao, ...extra }) });
+    } catch {
+      throw new Error("Sem conexão com a nuvem. Tente de novo.");
+    }
+    const dados = await r.json().catch(() => ({}));
+    if (dados.sair) { salvarSessao(null); mostrarInicio(); throw new Error("Sua sessão expirou. Entre de novo."); }
+    if (!r.ok || dados.erro) throw new Error(dados.erro || `Erro ${r.status}`);
+    return dados;
+  }
+
+  async function entrar() {
+    for (const b of [$("btnEntrar"), $("btnEntrarTopo")]) b.disabled = true;
+    try {
+      const { url } = await chamar("web_iniciar");
+      location.href = url;
+    } catch (e) {
+      aviso(e.message, true);
+      for (const b of [$("btnEntrar"), $("btnEntrarTopo")]) b.disabled = false;
+    }
+  }
+
+  async function sair() {
+    try { await chamar("web_sair"); } catch {}
+    salvarSessao(null);
+    mostrarInicio();
+  }
+
+  function mostrarInicio() {
+    $("inicio").style.display = "";
+    $("painel").style.display = "none";
+    $("usuario").style.display = "none";
+    $("btnEntrarTopo").style.display = "";
+  }
+
+  function mostrarPainel() {
+    $("inicio").style.display = "none";
+    $("painel").style.display = "block";
+    $("usuario").style.display = "flex";
+    $("btnEntrarTopo").style.display = "none";
+  }
+
+  async function carregar() {
+    mostrarPainel();
+    const lista = $("servidores");
+    lista.replaceChildren(...[1, 2, 3].map(() => el("div", { class: "esqueleto" })));
+    try {
+      const r = await chamar("painel");
+      if (!r.conectado) {
+        lista.replaceChildren(el("div", { class: "cartao vazio" },
+          el("h3", {}, "O login do Discord expirou"),
+          el("p", {}, "Entre de novo para continuar."),
+          el("button", { class: "btn discord", onclick: () => { salvarSessao(null); entrar(); } }, "Entrar com Discord")));
+        return;
+      }
+      $("nomeUsuario").textContent = r.nome || "";
+      $("avatar").textContent = (r.nome || "?").slice(0, 1).toUpperCase();
+      $("btnConvite").href = r.convite;
+      const servidores = r.servidores || [];
+      if (!servidores.length) {
+        lista.replaceChildren(el("div", { class: "cartao vazio", style: "grid-column: 1 / -1" },
+          el("h3", {}, "O bot ainda não está em nenhum servidor seu"),
+          el("p", {}, "Clique em \"+ Adicionar bot\", escolha o servidor e depois clique em Atualizar.")));
+        return;
+      }
+      lista.replaceChildren(...servidores.map(cartaoServidor));
+    } catch (e) {
+      lista.replaceChildren(el("div", { class: "cartao vazio", style: "grid-column: 1 / -1" },
+        el("h3", {}, "Não consegui carregar"), el("p", {}, e.message),
+        el("button", { class: "btn", onclick: carregar }, "Tentar de novo")));
+    }
+  }
+
+  function cartaoServidor(g) {
+    const icone = g.icone
+      ? el("img", { class: "icone-servidor", src: g.icone, alt: "" })
+      : el("div", { class: "icone-servidor" }, (g.nome || "?").slice(0, 1).toUpperCase());
+    let estado;
+    if (g.canal) estado = el("div", { class: "estado ok" }, `Alertas em #${g.canal.nome}`);
+    else if (g.admin) estado = el("div", { class: "estado" }, "Nenhum canal escolhido");
+    else estado = el("div", { class: "estado" }, "Só administradores configuram");
+
+    const botoes = el("div", { class: "botoes" });
+    if (g.admin) {
+      botoes.append(el("button", { class: "btn " + (g.canal ? "" : "pri"), onclick: () => abrirCanais(g) },
+        g.canal ? "Trocar canal" : "Escolher canal"));
+      if (g.canal) botoes.append(el("button", { class: "btn perigo", onclick: (ev) => parar(g, ev.currentTarget) }, "Parar alertas"));
+    }
+    return el("div", { class: "cartao servidor" },
+      el("div", { class: "cab" }, icone, el("div", { style: "min-width:0" }, el("div", { class: "nome" }, g.nome), estado)),
+      g.admin ? botoes : null);
+  }
+
+  async function parar(g, botao) {
+    if (!confirm(`Parar de mandar alertas em "${g.nome}"?`)) return;
+    botao.disabled = true;
+    try {
+      await chamar("remover", { guild_id: g.id });
+      aviso(`Alertas parados em ${g.nome}.`);
+      carregar();
+    } catch (e) { aviso(e.message, true); botao.disabled = false; }
+  }
+
+  function fecharModal() { $("fundoModal").style.display = "none"; }
+
+  async function abrirCanais(g) {
+    $("tituloModal").textContent = g.nome;
+    $("detalheModal").textContent = "Carregando canais...";
+    const lista = $("listaCanais");
+    lista.replaceChildren();
+    $("fundoModal").style.display = "flex";
+    try {
+      const { canais } = await chamar("canais", { guild_id: g.id });
+      $("detalheModal").textContent = "Clique no canal que vai receber os alertas:";
+      const atual = g.canal && g.canal.id;
+      lista.replaceChildren(...(canais || []).map((c) => el("button", {
+        class: "canal" + (c.id === atual ? " atual" : ""),
+        onclick: () => escolher(g, c),
+      }, el("span", { class: "hash" }, "#"), c.nome, c.id === atual ? " ✓" : "")));
+      if (!canais || !canais.length) $("detalheModal").textContent = "O bot não vê nenhum canal de texto aqui.";
+    } catch (e) {
+      $("detalheModal").textContent = e.message;
+    }
+  }
+
+  async function escolher(g, c) {
+    $("detalheModal").textContent = "Salvando e mandando uma mensagem de teste...";
+    for (const b of $("listaCanais").querySelectorAll("button")) b.disabled = true;
+    try {
+      await chamar("escolher", { guild_id: g.id, channel_id: c.id });
+      fecharModal();
+      aviso(`Pronto! Os alertas vão chegar em #${c.nome}. O bot mandou um teste lá.`);
+      carregar();
+    } catch (e) {
+      $("detalheModal").textContent = e.message;
+      for (const b of $("listaCanais").querySelectorAll("button")) b.disabled = false;
+    }
+  }
+
+  async function infoDownloads() {
+    try {
+      const r = await fetch("https://api.github.com/repos/OctavioKonzen/Alerta/releases/tags/ultima");
+      if (!r.ok) return;
+      const rel = await r.json();
+      for (const a of rel.assets || []) {
+        const quando = new Date(a.updated_at).toLocaleDateString("pt-BR");
+        const mb = (a.size / 1048576).toFixed(0);
+        if (a.name === "AlertaRoblox.apk") $("infoApp").textContent = `AlertaRoblox.apk · ${mb} MB · ${quando}`;
+        if (a.name === "AlertaRoblox-Setup.exe") $("infoPc").textContent = `AlertaRoblox-Setup.exe · ${mb} MB · ${quando}`;
+      }
+    } catch {}
+  }
+
+  // Volta do login com Discord: #sessao=... ou #erro=...
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get("sessao") || hash.get("erro")) {
+    if (hash.get("sessao")) salvarSessao(hash.get("sessao"));
+    if (hash.get("erro")) setTimeout(() => aviso(hash.get("erro"), true), 300);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  $("btnEntrar").addEventListener("click", entrar);
+  $("btnEntrarTopo").addEventListener("click", entrar);
+  $("btnSair").addEventListener("click", sair);
+  $("btnAtualizar").addEventListener("click", carregar);
+  $("btnFecharModal").addEventListener("click", fecharModal);
+  $("fundoModal").addEventListener("click", (e) => { if (e.target === $("fundoModal")) fecharModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharModal(); });
+
+  infoDownloads();
+  if (lerSessao()) carregar(); else mostrarInicio();
+})();
+</script>
+</body>
+</html>

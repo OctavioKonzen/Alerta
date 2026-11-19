@@ -63,6 +63,8 @@ O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInst
 
 ## Parte 2 – Jogadores
 
+**Site:** https://octaviokonzen.github.io/Alerta/ (downloads e painel do bot: entre com o Discord e escolha o canal dos alertas).
+
 ### No celular (Android)
 1. Baixe o `AlertaRoblox.apk` em https://github.com/OctavioKonzen/Alerta/releases/tag/ultima . Se o Android pedir, permita "instalar apps desconhecidos".
 2. Abra o app, toque em **Criar conta**, confirme o e-mail e entre.

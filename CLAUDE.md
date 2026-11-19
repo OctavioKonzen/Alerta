@@ -23,6 +23,8 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 | `supabase/migrations/` | SQL do banco (rodado à mão no SQL Editor) |
 | `supabase/functions/send-alert/index.ts` | Edge Function (Deno) que recebe o alerta e envia o push pelo Firebase e a mensagem nos canais do Discord |
 | `supabase/functions/discord-bot/index.ts` | Edge Function do painel do Discord (aba Discord do app): login com Discord, lista servidores em comum com o bot, admin escolhe o canal |
+| `site/index.html` | Site do painel do bot (GitHub Pages, `https://octaviokonzen.github.io/Alerta/`): entrar com Discord (`web_iniciar`, sessão `x-sessao-web`, tabela `sessoes_web`), escolher canal por servidor, links de download. HTML/JS puro |
+| `.github/workflows/site.yml` | Publica a pasta `site/` no GitHub Pages |
 | `app/` | App Android em React Native/Expo SDK 53 (JS, sem TypeScript, sem react-navigation) |
 | `.github/workflows/instalador-pc.yml` | Gera `AlertaRoblox-Setup-x.y.z.exe` (Windows, PyInstaller + Inno Setup) |
 | `.github/workflows/app-android.yml` | Gera e assina o APK (expo prebuild + gradle + apksigner) |
@@ -65,5 +67,6 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [x] Bot do Discord: `0003_discord.sql`, bot criado (app "Tortilha"), segredos no Supabase, `discord-bot` e `smooth-responder` publicadas, APK novo gerado
 - [ ] PC com janela + login pelo Discord: rodar `0004_pc_discord.sql`, publicar a `discord-bot` nova, gerar instalador novo
 - [ ] Atualização automática: deixar o repositório público e rodar os dois builds (publicam na Release `ultima`)
+- [ ] Site: rodar `0005_site.sql`, publicar a `discord-bot` nova, ligar o GitHub Pages (Settings > Pages > Source: GitHub Actions)
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).

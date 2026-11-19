@@ -16,13 +16,16 @@
 // No Developer Portal > OAuth2 > Redirects, adicione:
 //   https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot
 //
-// O programa do PC tambem usa esta funcao: entra com o Discord (pc_iniciar /
+// O site do painel (pasta site/, GitHub Pages) entra com o Discord (web_iniciar) e usa
+// o cabecalho "x-sessao-web". O programa do PC tambem usa esta funcao: entra com o Discord (pc_iniciar /
 // pc_resultado) e depois usa o painel com o cabecalho "x-chave-pc".
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
 const VOLTAR_APP = "alertaroblox://discord";
+const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
+const DIAS_SESSAO_WEB = 30;
 const API = "https://discord.com/api/v10";
 // Ver canais (1024) + Enviar mensagens (2048) + Inserir links (16384)
 const PERMISSOES_BOT = "19456";
@@ -48,7 +51,7 @@ function segredo(nome: string) {
 }
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-chave-pc, x-sessao-web",
 };
 function json(corpo: unknown, status = 200) {
   return new Response(JSON.stringify(corpo), {
@@ -332,6 +335,42 @@ async function salvarTokens(userId: string, u: { id: string; nome: string }, t: 
   });
 }
 
+// ---------- Site do painel (login com Discord) ----------
+function voltarSite(params: Record<string, string>) {
+  return new Response(null, { status: 302, headers: { Location: `${SITE}#${new URLSearchParams(params)}` } });
+}
+async function webIniciar() {
+  const estado = aleatorio();
+  await supa.from("discord_estados").delete().lt("expira_em", new Date().toISOString());
+  await supa.from("discord_estados").insert({
+    estado, user_id: null, tipo: "web", expira_em: new Date(Date.now() + 10 * 60_000).toISOString(),
+  });
+  return { url: urlLogin(estado, "identify guilds") };
+}
+async function donoDaSessao(token: string): Promise<string | null> {
+  if (!/^web_[0-9a-f]{64}$/.test(token)) return null;
+  const { data } = await supa.from("sessoes_web").select("user_id, expira_em")
+    .eq("token_hash", await sha256(token)).maybeSingle();
+  if (!data || new Date(data.expira_em) < new Date()) return null;
+  return data.user_id;
+}
+async function retornoLoginWeb(u: { id: string; nome: string }, t: TokensDiscord) {
+  const { data: conta } = await supa.from("discord_contas").select("user_id")
+    .eq("discord_id", u.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (!conta) {
+    return voltarSite({ erro: "Este Discord ainda nao foi conectado no app do celular. " +
+      "Abra o app > aba Discord > Conectar com Discord e depois entre aqui de novo." });
+  }
+  await salvarTokens(conta.user_id, u, t);
+  const token = "web_" + aleatorio(32);
+  await supa.from("sessoes_web").delete().lt("expira_em", new Date().toISOString());
+  await supa.from("sessoes_web").insert({
+    token_hash: await sha256(token), user_id: conta.user_id,
+    expira_em: new Date(Date.now() + DIAS_SESSAO_WEB * 86_400_000).toISOString(),
+  });
+  return voltarSite({ sessao: token });
+}
+
 // ---------- Retorno do login com Discord (vem do navegador) ----------
 async function retornoLogin(url: URL) {
   const estado = url.searchParams.get("state") ?? "";
@@ -342,13 +381,16 @@ async function retornoLogin(url: URL) {
       await supa.from("discord_estados").update({ pronto: true, erro: "login cancelado" }).eq("estado", estado);
       return textoPc("Login cancelado. Pode fechar esta aba.");
     }
+    if (p?.tipo === "web") return voltarSite({ erro: "Login cancelado." });
     return voltar({ erro: "login cancelado" });
   }
 
   const { data: pedido } = await supa.from("discord_estados").select("*")
     .eq("estado", estado).maybeSingle();
   const doPc = String(pedido?.tipo ?? "").startsWith("pc");
+  const doSite = pedido?.tipo === "web";
   if (!pedido || new Date(pedido.expira_em) < new Date()) {
+    if (doSite) return voltarSite({ erro: "Pedido expirado, tente de novo." });
     return doPc ? textoPc("Pedido expirado. Tente de novo no PC.") : voltar({ erro: "pedido expirado, tente de novo" });
   }
   if (!doPc) await supa.from("discord_estados").delete().eq("estado", estado);
@@ -360,6 +402,7 @@ async function retornoLogin(url: URL) {
     const bruto = eu.corpo as { id: string; username: string; global_name?: string };
     const u = { id: bruto.id, nome: (bruto.global_name || bruto.username).slice(0, 60) };
     if (doPc) return await retornoLoginPc(pedido, u, t);
+    if (doSite) return await retornoLoginWeb(u, t);
     await salvarTokens(pedido.user_id, u, t);
     return voltar({ ok: "1" });
   } catch (e) {
@@ -368,6 +411,7 @@ async function retornoLogin(url: URL) {
       await supa.from("discord_estados").update({ pronto: true, erro: "falha no login com Discord" }).eq("estado", estado);
       return textoPc("Falha no login com Discord. Tente de novo no PC.");
     }
+    if (doSite) return voltarSite({ erro: "Falha no login com Discord. Tente de novo." });
     return voltar({ erro: "falha no login com Discord" });
   }
 }
@@ -389,6 +433,20 @@ Deno.serve(async (req) => {
     if (chavePc) {
       const dono = await donoDoPc(chavePc);
       if (!dono) return json({ erro: "chave do PC invalida, conecte o PC de novo" }, 401);
+      if (!["painel", "canais", "escolher", "remover"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      return json(await acao(dono, corpo));
+    }
+
+    // Site do painel
+    if (qual === "web_iniciar") return json(await webIniciar());
+    const sessaoWeb = req.headers.get("x-sessao-web")?.trim();
+    if (sessaoWeb) {
+      const dono = await donoDaSessao(sessaoWeb);
+      if (!dono) return json({ erro: "sessao expirada", sair: true }, 401);
+      if (qual === "web_sair") {
+        await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
+        return json({ ok: true });
+      }
       if (!["painel", "canais", "escolher", "remover"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
