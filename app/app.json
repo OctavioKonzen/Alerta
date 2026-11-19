@@ -15,7 +15,7 @@
       ["expo-notifications", { "color": "#E53935" }]
     ],
     "extra": {
-      "supabaseUrl": "https://SEU-PROJETO.supabase.co",
+      "supabaseUrl": "https://vtyxkowxnesclwtndbog.supabase.co",
       "supabaseAnonKey": "SUA_ANON_KEY",
       "eas": { "projectId": "SEU_PROJECT_ID_DO_EXPO" }
     }

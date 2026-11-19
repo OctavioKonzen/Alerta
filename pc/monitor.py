@@ -70,7 +70,7 @@ NOME_JOGADOR = ""        # vazio = descobre sozinho pelo log do Roblox
 LINK_SERVIDOR_PRIVADO = ""   # opcional: link do seu servidor privado (vai no alerta)
 
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
-SUPABASE_URL = "https://SEU-PROJETO.supabase.co"
+SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
 SUPABASE_ANON_KEY = "SUA_ANON_KEY"
 # ---------------------------------------------------------------------------
 
@@ -193,7 +193,7 @@ def http(url, dados=None, headers=None, metodo=None, timeout=15):
 
 
 def nuvem_configurada():
-    if "SEU-PROJETO" in SUPABASE_URL or "SUA_ANON" in SUPABASE_ANON_KEY:
+    if "SEU-PROJETO" in SUPABASE_URL or "supabase.co" not in SUPABASE_URL or "SUA_ANON" in SUPABASE_ANON_KEY:
         print("SUPABASE_URL / SUPABASE_ANON_KEY ainda nao foram preenchidos no monitor.py.")
         return False
     return True
