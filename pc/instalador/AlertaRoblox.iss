@@ -63,4 +63,4 @@ Filename: "{app}\{#AppExe}"; Description: "Abrir o Alerta Roblox agora"; Flags: 
 Filename: "{app}\{#AppExe}"; Flags: nowait; Check: WizardSilent
 
 [Messages]
-ptbr.FinishedLabel=O Alerta Roblox foi instalado.%n%nNa janela dele: 1) Conectar com Discord (antes, conecte o Discord no app do celular, aba Discord); 2) Escolher area da tela; 3) Canal do Discord. Depois ele fica rodando perto do relogio do Windows.
+ptbr.FinishedLabel=O Alerta Roblox foi instalado.%n%nNa janela dele: 1) Conectar com Discord; 2) Escolher area da tela; 3) Canal do Discord. Depois ele fica rodando perto do relogio do Windows.

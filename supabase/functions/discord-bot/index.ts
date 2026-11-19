@@ -299,16 +299,7 @@ async function retornoLoginPc(pedido: Record<string, any>, u: { id: string; nome
     await supa.from("discord_estados").update({ pronto: true, erro }).eq("estado", pedido.estado);
     return textoPc("Nao deu certo: " + erro);
   };
-  let userId: string = pedido.user_id;
-  if (pedido.tipo === "pc") {
-    const { data: conta } = await supa.from("discord_contas").select("user_id")
-      .eq("discord_id", u.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
-    if (!conta) {
-      return await falhar("este Discord ainda nao foi conectado no app do celular. " +
-        "Abra o app > aba Discord > Conectar com Discord, e depois tente de novo no PC.");
-    }
-    userId = conta.user_id;
-  }
+  const userId: string = pedido.tipo === "pc" ? await usuarioDoDiscord(u) : pedido.user_id;
   await salvarTokens(userId, u, t);
 
   let chave: string | null = null;
@@ -326,6 +317,22 @@ async function retornoLoginPc(pedido: Record<string, any>, u: { id: string; nome
 }
 
 type TokensDiscord = { access_token: string; refresh_token: string; expires_in: number };
+
+// Conta do sistema para este Discord. Se ainda nao existe, cria na hora
+// (entrar com Discord = ter conta, igual aos paineis de bots).
+async function usuarioDoDiscord(u: { id: string; nome: string }): Promise<string> {
+  const { data: conta } = await supa.from("discord_contas").select("user_id")
+    .eq("discord_id", u.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+  if (conta) return conta.user_id;
+  const email = `discord_${u.id}@discord.alertaroblox`;
+  const { data, error } = await supa.auth.admin.createUser({
+    email, email_confirm: true, user_metadata: { discord_id: u.id, nome: u.nome, via: "discord" },
+  });
+  if (data?.user) return data.user.id;
+  const { data: id } = await supa.rpc("usuario_por_email", { p_email: email });   // ja criada antes
+  if (id) return id as string;
+  throw new Error("nao consegui criar a conta: " + (error?.message ?? "erro desconhecido"));
+}
 async function salvarTokens(userId: string, u: { id: string; nome: string }, t: TokensDiscord) {
   await supa.from("discord_contas").upsert({
     user_id: userId, discord_id: u.id, nome: u.nome,
@@ -355,20 +362,41 @@ async function donoDaSessao(token: string): Promise<string | null> {
   return data.user_id;
 }
 async function retornoLoginWeb(u: { id: string; nome: string }, t: TokensDiscord) {
-  const { data: conta } = await supa.from("discord_contas").select("user_id")
-    .eq("discord_id", u.id).order("updated_at", { ascending: false }).limit(1).maybeSingle();
-  if (!conta) {
-    return voltarSite({ erro: "Este Discord ainda nao foi conectado no app do celular. " +
-      "Abra o app > aba Discord > Conectar com Discord e depois entre aqui de novo." });
-  }
-  await salvarTokens(conta.user_id, u, t);
+  const userId = await usuarioDoDiscord(u);
+  await salvarTokens(userId, u, t);
   const token = "web_" + aleatorio(32);
   await supa.from("sessoes_web").delete().lt("expira_em", new Date().toISOString());
   await supa.from("sessoes_web").insert({
-    token_hash: await sha256(token), user_id: conta.user_id,
+    token_hash: await sha256(token), user_id: userId,
     expira_em: new Date(Date.now() + DIAS_SESSAO_WEB * 86_400_000).toISOString(),
   });
   return voltarSite({ sessao: token });
+}
+
+// ---------- Login do app do celular com Discord ----------
+const VOLTAR_LOGIN_APP = "alertaroblox://login";
+function voltarLoginApp(params: Record<string, string>) {
+  return new Response(null, { status: 302, headers: { Location: `${VOLTAR_LOGIN_APP}?${new URLSearchParams(params)}` } });
+}
+async function appLoginIniciar() {
+  const estado = aleatorio();
+  await supa.from("discord_estados").delete().lt("expira_em", new Date().toISOString());
+  await supa.from("discord_estados").insert({
+    estado, user_id: null, tipo: "app_login", expira_em: new Date(Date.now() + 10 * 60_000).toISOString(),
+  });
+  return { url: urlLogin(estado, "identify guilds") };
+}
+// Entra (ou cria a conta) e devolve ao app um codigo de uso unico para abrir a sessao.
+async function retornoLoginApp(u: { id: string; nome: string }, t: TokensDiscord) {
+  const userId = await usuarioDoDiscord(u);
+  await salvarTokens(userId, u, t);
+  const { data: quem } = await supa.auth.admin.getUserById(userId);
+  const email = quem?.user?.email;
+  if (!email) throw new Error("conta sem e-mail");
+  const { data: link, error } = await supa.auth.admin.generateLink({ type: "magiclink", email });
+  const hash = link?.properties?.hashed_token;
+  if (!hash) throw new Error("nao consegui abrir a sessao: " + (error?.message ?? ""));
+  return voltarLoginApp({ token_hash: hash });
 }
 
 // ---------- Retorno do login com Discord (vem do navegador) ----------
@@ -382,6 +410,7 @@ async function retornoLogin(url: URL) {
       return textoPc("Login cancelado. Pode fechar esta aba.");
     }
     if (p?.tipo === "web") return voltarSite({ erro: "Login cancelado." });
+    if (p?.tipo === "app_login") return voltarLoginApp({ erro: "Login cancelado." });
     return voltar({ erro: "login cancelado" });
   }
 
@@ -389,8 +418,10 @@ async function retornoLogin(url: URL) {
     .eq("estado", estado).maybeSingle();
   const doPc = String(pedido?.tipo ?? "").startsWith("pc");
   const doSite = pedido?.tipo === "web";
+  const doLoginApp = pedido?.tipo === "app_login";
   if (!pedido || new Date(pedido.expira_em) < new Date()) {
     if (doSite) return voltarSite({ erro: "Pedido expirado, tente de novo." });
+    if (doLoginApp) return voltarLoginApp({ erro: "Pedido expirado, tente de novo." });
     return doPc ? textoPc("Pedido expirado. Tente de novo no PC.") : voltar({ erro: "pedido expirado, tente de novo" });
   }
   if (!doPc) await supa.from("discord_estados").delete().eq("estado", estado);
@@ -403,6 +434,7 @@ async function retornoLogin(url: URL) {
     const u = { id: bruto.id, nome: (bruto.global_name || bruto.username).slice(0, 60) };
     if (doPc) return await retornoLoginPc(pedido, u, t);
     if (doSite) return await retornoLoginWeb(u, t);
+    if (doLoginApp) return await retornoLoginApp(u, t);
     await salvarTokens(pedido.user_id, u, t);
     return voltar({ ok: "1" });
   } catch (e) {
@@ -412,6 +444,7 @@ async function retornoLogin(url: URL) {
       return textoPc("Falha no login com Discord. Tente de novo no PC.");
     }
     if (doSite) return voltarSite({ erro: "Falha no login com Discord. Tente de novo." });
+    if (doLoginApp) return voltarLoginApp({ erro: "Falha no login com Discord. Tente de novo." });
     return voltar({ erro: "falha no login com Discord" });
   }
 }
@@ -437,8 +470,9 @@ Deno.serve(async (req) => {
       return json(await acao(dono, corpo));
     }
 
-    // Site do painel
+    // Site do painel e login do app com Discord (sem conta ainda)
     if (qual === "web_iniciar") return json(await webIniciar());
+    if (qual === "app_login_iniciar") return json(await appLoginIniciar());
     const sessaoWeb = req.headers.get("x-sessao-web")?.trim();
     if (sessaoWeb) {
       const dono = await donoDaSessao(sessaoWeb);

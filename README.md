@@ -71,7 +71,7 @@ O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInst
 3. Permita as notificações.
 
 ### No PC (Windows) – pelo instalador (recomendado)
-1. No app do celular, abra a aba **Discord** e toque em **Conectar com Discord**.
+1. No app do celular, toque em **Entrar com Discord** (a conta é criada na hora).
 2. Baixe o `AlertaRoblox-Setup.exe` em https://github.com/OctavioKonzen/Alerta/releases/tag/ultima e instale. Não precisa de Python nem de administrador.
    Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações > Executar assim mesmo**. Isso acontece porque o instalador não tem assinatura digital paga.
 3. O Alerta Roblox abre uma janela (sem tela preta). Nela:

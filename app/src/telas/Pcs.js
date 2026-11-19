@@ -38,9 +38,8 @@ export default function Pcs() {
         <View style={[s.cartao, { borderColor: cores.destaque }]}>
           <Text style={[s.valor, { fontWeight: '700', marginBottom: 6 }]}>Como ligar um PC</Text>
           <Text style={{ color: cores.fraco, lineHeight: 20 }}>
-            1. Aqui no app, na aba Discord, toque em "Conectar com Discord".{'\n'}
-            2. No PC, instale e abra o Alerta Roblox e clique em "Conectar com Discord".{'\n'}
-            Use a mesma conta do Discord nos dois. Ate 5 PCs por conta.
+            No PC, instale e abra o Alerta Roblox e clique em "Conectar com Discord".{'\n'}
+            Use a mesma conta do Discord deste app. Ate 5 PCs por conta.
           </Text>
         </View>
       }

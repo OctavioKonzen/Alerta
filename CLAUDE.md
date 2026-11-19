@@ -8,7 +8,7 @@ O PC do jogador lê a tela do Roblox (OCR). Quando aparece uma frase configurada
 - o nome do jogador;
 - o código do servidor (Job ID) e um link para entrar nele.
 
-O app é público e multiusuário: cada pessoa tem conta própria (e-mail/senha), e cada PC só manda alertas para a conta à qual foi ligado.
+O app é público e multiusuário: cada pessoa tem conta própria, e cada PC só manda alertas para a conta à qual foi ligado. **Entrar com Discord cria a conta na hora** (site, PC e app; função `usuarioDoDiscord`, e-mail interno `discord_<id>@discord.alertaroblox`; o app abre a sessão com `generateLink` + `verifyOtp`). E-mail/senha continua funcionando no app.
 
 ```
 pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app Android
@@ -68,5 +68,6 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [ ] PC com janela + login pelo Discord: rodar `0004_pc_discord.sql`, publicar a `discord-bot` nova, gerar instalador novo
 - [ ] Atualização automática: deixar o repositório público e rodar os dois builds (publicam na Release `ultima`)
 - [ ] Site: rodar `0005_site.sql`, publicar a `discord-bot` nova, ligar o GitHub Pages (Settings > Pages > Source: GitHub Actions)
+- [ ] Conta pelo Discord: rodar `0006_conta_discord.sql`, publicar a `discord-bot` nova, gerar APK novo
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).
