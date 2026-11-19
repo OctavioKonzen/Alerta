@@ -16,18 +16,56 @@ Notifications.setNotificationHandler({
 
 let tokenAtual = null;
 
-export async function registrarCelular() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('alertas', {
-      name: 'Alertas do jogo',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 600, 300, 600, 300, 600],
-      lightColor: '#E53935',
-      sound: 'default',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: true,
+// Canal com importancia MAXIMA: e o que permite a notificacao flutuante (aparece em cima da tela).
+export async function criarCanal() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('alertas', {
+    name: 'Alertas do jogo',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 600, 300, 600, 300, 600],
+    lightColor: '#E53935',
+    sound: 'default',
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: true,
+  });
+}
+
+// Abre a tela do celular onde a pessoa liga "Flutuante" / "Pop-up" para este canal.
+export async function abrirConfigFlutuante() {
+  await criarCanal();
+  try {
+    const IntentLauncher = require('expo-intent-launcher');
+    await IntentLauncher.startActivityAsync('android.settings.CHANNEL_NOTIFICATION_SETTINGS', {
+      extra: {
+        'android.provider.extra.APP_PACKAGE': 'com.octaviokonzen.alerta',
+        'android.provider.extra.CHANNEL_ID': 'alertas',
+      },
     });
+  } catch {
+    await Linking.openSettings();
   }
+}
+
+// Notificacao de teste em 5 segundos (de para minimizar o app e ver se ela flutua).
+export async function testarNotificacao() {
+  await criarCanal();
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Teste de notificacao flutuante',
+      body: 'Se apareceu em cima da tela, esta tudo certo!',
+      sound: 'default',
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 5,
+      channelId: 'alertas',
+    },
+  });
+}
+
+export async function registrarCelular() {
+  await criarCanal();
   if (!Device.isDevice) {
     throw new Error('Notificacoes so funcionam em um celular de verdade.');
   }

@@ -1,11 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
+import { abrirConfigFlutuante, testarNotificacao } from '../notificacoes';
 import { cores, s } from '../estilo';
 
 export default function Alertas({ userId }) {
   const [lista, setLista] = useState([]);
   const [carregando, setCarregando] = useState(false);
+  const [mostrarDica, setMostrarDica] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('dica_flutuante_ok').then((v) => setMostrarDica(v !== '1')).catch(() => setMostrarDica(true));
+  }, []);
+
+  function esconderDica() {
+    setMostrarDica(false);
+    AsyncStorage.setItem('dica_flutuante_ok', '1').catch(() => {});
+  }
+
+  async function teste() {
+    try {
+      await testarNotificacao();
+      Alert.alert('Teste agendado', 'Saia do app agora (va para a tela inicial). Em 5 segundos a notificacao deve aparecer flutuando em cima da tela.');
+    } catch (e) {
+      Alert.alert('Teste', 'Nao consegui criar a notificacao: ' + e.message);
+    }
+  }
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -42,6 +63,28 @@ export default function Alertas({ userId }) {
       data={lista}
       keyExtractor={(a) => String(a.id)}
       refreshControl={<RefreshControl refreshing={carregando} onRefresh={carregar} tintColor={cores.destaque} />}
+      ListHeaderComponent={mostrarDica ? (
+        <View style={[s.cartao, { borderColor: cores.destaque }]}>
+          <Text style={[s.valor, { fontWeight: '700', marginBottom: 6 }]}>Notificacao flutuante</Text>
+          <Text style={{ color: cores.fraco, lineHeight: 20 }}>
+            Para o alerta aparecer em cima da tela (mesmo com o Roblox ou outro app aberto), ligue
+            "Flutuante", "Pop-up" ou "Mostrar na tela" na notificacao "Alertas do jogo".
+          </Text>
+          <TouchableOpacity style={s.botao} onPress={() => abrirConfigFlutuante().catch(() => {})}>
+            <Text style={s.botaoTexto}>Ativar notificacao flutuante</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.botaoSec} onPress={teste}>
+            <Text style={s.botaoSecTexto}>Testar (aparece em 5 segundos)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={esconderDica} style={{ alignItems: 'center', marginTop: 10 }}>
+            <Text style={{ color: cores.fraco }}>Ja ativei, esconder</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity onPress={() => setMostrarDica(true)} style={{ alignItems: 'flex-end', marginBottom: 8 }}>
+          <Text style={{ color: cores.fraco, fontSize: 12 }}>Notificacao flutuante</Text>
+        </TouchableOpacity>
+      )}
       ListEmptyComponent={<Text style={s.vazio}>Nenhum alerta ainda. Quando o PC detectar uma mensagem, ela aparece aqui.</Text>}
       ListFooterComponent={lista.length ? (
         <TouchableOpacity style={s.botaoSec} onPress={limpar}>
