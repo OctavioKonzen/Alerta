@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Alerta Roblox",
+    "slug": "alerta-roblox",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0f1115",
+    "android": {
+      "package": "com.seunome.alertaroblox",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["POST_NOTIFICATIONS", "VIBRATE"]
+    },
+    "plugins": [
+      ["expo-notifications", { "color": "#E53935" }]
+    ],
+    "extra": {
+      "supabaseUrl": "https://SEU-PROJETO.supabase.co",
+      "supabaseAnonKey": "SUA_ANON_KEY",
+      "eas": { "projectId": "SEU_PROJECT_ID_DO_EXPO" }
+    }
+  }
+}

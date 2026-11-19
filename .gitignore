@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+app/android/
+app/ios/
+*.apk
+*.aab
+# chave do PC de cada jogador
+pc/config.json
+# chave secreta do Firebase (conta de servico) - NUNCA subir
+*firebase-adminsdk*.json
+service-account*.json
