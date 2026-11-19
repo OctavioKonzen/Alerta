@@ -32,6 +32,9 @@ PC (monitor.py) --chave do PC--> Supabase (função send-alert) --push--> app no
    supabase link --project-ref SEU_PROJECT_REF
    supabase functions deploy send-alert --no-verify-jwt
    ```
+   Ou pelo site: **Edge Functions > Deploy a new function > Via Editor**, cole o `index.ts` e, em **Settings**, desligue **Verify JWT**. Se o nome da função não for `send-alert`, ajuste `FUNCAO_ALERTA` no `pc/monitor.py`.
+   ```
+   ```
 5. Em **Project Settings > API**, copie a **Project URL** e a chave **anon public**.
    Ela é pública por natureza: a segurança fica nas regras do banco (RLS).
 

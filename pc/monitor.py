@@ -72,6 +72,7 @@ LINK_SERVIDOR_PRIVADO = ""   # opcional: link do seu servidor privado (vai no al
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
 SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
 SUPABASE_ANON_KEY = "SUA_ANON_KEY"
+FUNCAO_ALERTA = "smooth-responder"   # nome da Edge Function no Supabase
 # ---------------------------------------------------------------------------
 
 INSTALADO = getattr(sys, "frozen", False)   # True quando roda pelo .exe do instalador
@@ -328,7 +329,7 @@ def enviar_alerta(frase, mensagem, teste=False, esperar=False):
                  "link": link_servidor(info), "teste": teste}
         for tentativa in range(3):
             try:
-                status, r = http(f"{SUPABASE_URL}/functions/v1/send-alert", dados,
+                status, r = http(f"{SUPABASE_URL}/functions/v1/{FUNCAO_ALERTA}", dados,
                                  {"x-chave-pc": chave, "apikey": SUPABASE_ANON_KEY})
             except Exception as erro:
                 print("Falha de conexao:", erro)
