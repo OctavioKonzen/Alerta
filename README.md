@@ -38,7 +38,7 @@ PC (monitor.py) --chave do PC--> Supabase (função send-alert) --push--> app no
 
 ### 2. Firebase (só para o Android receber push)
 O Android entrega notificações pelo Firebase Cloud Messaging. É grátis.
-1. Em https://console.firebase.google.com, crie um projeto e adicione um **app Android** com o pacote `com.seunome.alertaroblox`. Use o mesmo pacote do `app/app.json` e troque `seunome`.
+1. Em https://console.firebase.google.com, crie um projeto e adicione um **app Android** com o pacote `com.octaviokonzen.alerta`. Use o mesmo pacote do `app/app.json` e troque `seunome`.
 2. Baixe o `google-services.json` e coloque em `app/`.
 3. Vá em **Configurações do projeto > Contas de serviço > Gerar nova chave privada** e guarde esse JSON. Ele é **secreto**: não suba para o GitHub.
 
