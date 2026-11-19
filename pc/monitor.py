@@ -77,7 +77,8 @@ FUNCAO_ALERTA = "smooth-responder"   # Edge Function que recebe os alertas
 FUNCAO_DISCORD = "discord-bot"       # Edge Function do login/painel do Discord
 # ---------------------------------------------------------------------------
 
-INSTALADO = getattr(sys, "frozen", False)   # True quando roda pelo .exe do instalador
+# True quando roda pelo .exe do instalador (Nuitka define __compiled__; PyInstaller, sys.frozen)
+INSTALADO = bool(getattr(sys, "frozen", False) or "__compiled__" in globals())
 if INSTALADO or os.environ.get("APPDATA"):
     PASTA = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "AlertaRoblox")
 else:

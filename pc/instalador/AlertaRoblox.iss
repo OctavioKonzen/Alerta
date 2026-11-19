@@ -1,6 +1,6 @@
 ; Instalador do Alerta Roblox (Inno Setup 6)
 ; Gerado automaticamente pelo GitHub Actions (.github/workflows/instalador-pc.yml).
-; Para gerar na mao: rode o PyInstaller (veja o workflow) e depois
+; Para gerar na mao: compile com o Nuitka (veja o workflow) e depois
 ;   iscc pc\instalador\AlertaRoblox.iss
 
 #define AppNome "Alerta Roblox"

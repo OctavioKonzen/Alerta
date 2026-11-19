@@ -17,7 +17,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 ## Estrutura
 | Caminho | O que é |
 |---|---|
-| `pc/monitor.py` | Programa do PC (Python, Windows). Janela moderna em CustomTkinter (cores do app) + ícone na bandeja (pystray), sem console (PyInstaller `--windowed`). Login do PC pelo Discord (função `discord-bot`, ações `pc_iniciar`/`pc_resultado`). OCR com RapidOCR, captura com mss. Log em `%APPDATA%\AlertaRoblox\alerta.log`. Pelo Python: `debug`, `imagem`, `conectar` (e-mail), `autoteste` |
+| `pc/monitor.py` | Programa do PC (Python, Windows). Janela moderna em CustomTkinter (cores do app) + ícone na bandeja (pystray), sem console (compilado com Nuitka, `--windows-console-mode=disable`). Login do PC pelo Discord (função `discord-bot`, ações `pc_iniciar`/`pc_resultado`). OCR com RapidOCR, captura com mss. Log em `%APPDATA%\AlertaRoblox\alerta.log`. Pelo Python: `debug`, `imagem`, `conectar` (e-mail), `autoteste` |
 | `pc/instalador/` | Inno Setup (`AlertaRoblox.iss`) + `icone.ico` |
 | `pc/requirements.txt` | Dependências do PC (usadas no build do .exe) |
 | `supabase/migrations/` | SQL do banco (rodado à mão no SQL Editor) |
@@ -26,7 +26,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 | `site/index.html` | Site do painel do bot (GitHub Pages, `https://octaviokonzen.github.io/Alerta/`): entrar com Discord (`web_iniciar`, sessão `x-sessao-web`, tabela `sessoes_web`), escolher canal por servidor, links de download. HTML/JS puro |
 | `.github/workflows/site.yml` | Publica a pasta `site/` no GitHub Pages |
 | `app/` | App Android em React Native/Expo SDK 53 (JS, sem TypeScript, sem react-navigation) |
-| `.github/workflows/instalador-pc.yml` | Gera `AlertaRoblox-Setup-x.y.z.exe` (Windows, PyInstaller + Inno Setup) |
+| `.github/workflows/instalador-pc.yml` | Gera `AlertaRoblox-Setup-x.y.z.exe` (Windows, Nuitka + Inno Setup) |
 | `.github/workflows/app-android.yml` | Gera e assina o APK (expo prebuild + gradle + apksigner) |
 
 ## Infra (valores públicos, podem ficar no código)
