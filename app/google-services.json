@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "563362085704",
+    "project_id": "alerta-fd83a",
+    "storage_bucket": "alerta-fd83a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:563362085704:android:6361bc3a0acc93df9a917d",
+        "android_client_info": {
+          "package_name": "com.octaviokonzen.alerta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCc46iUMtA4Vr_x953XbWga5jyLvYb5IWU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

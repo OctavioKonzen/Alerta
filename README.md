@@ -16,7 +16,7 @@ PC (monitor.py) --chave do PC--> Supabase (função send-alert) --push--> app no
 |---|---|
 | `pc/` | Script do PC (Windows + Python) |
 | `supabase/` | Banco de dados e a função que dispara as notificações |
-| `app/` | App Android (Expo / React Native) |
+| `app/` | App Android (React Native / Expo) |
 
 ---
 
@@ -36,39 +36,26 @@ PC (monitor.py) --chave do PC--> Supabase (função send-alert) --push--> app no
 5. Em **Project Settings > API**, copie a **Project URL** e a chave **anon public**.
    Ela é pública por natureza: a segurança fica nas regras do banco (RLS).
 
-### 2. Firebase (só para o Android receber push)
-O Android entrega notificações pelo Firebase Cloud Messaging. É grátis.
-1. Em https://console.firebase.google.com, crie um projeto e adicione um **app Android** com o pacote `com.octaviokonzen.alerta`. Use o mesmo pacote do `app/app.json` e troque `seunome`.
-2. Baixe o `google-services.json` e coloque em `app/`.
-3. Vá em **Configurações do projeto > Contas de serviço > Gerar nova chave privada** e guarde esse JSON. Ele é **secreto**: não suba para o GitHub.
+### 2. Firebase (entrega as notificações no Android)
+1. Em https://console.firebase.google.com, crie um projeto e adicione um **app Android** com o pacote `com.octaviokonzen.alerta`.
+2. Baixe o `google-services.json` e coloque em `app/` (já está no repositório).
+3. Em **Configurações do projeto > Contas de serviço**, clique em **Gerar nova chave privada**. Baixa um JSON **secreto**.
+4. No Supabase, abra **Edge Functions > Secrets** e crie o segredo `FIREBASE_SERVICE_ACCOUNT` com o **conteúdo inteiro** desse JSON. Não suba esse arquivo para o GitHub.
+5. Rode também `supabase/migrations/0002_token_firebase.sql` no SQL Editor, se o banco foi criado antes dessa versão.
 
-### 3. Expo / EAS (gera o APK)
-```
-cd app
-npm install
-npx expo install --fix        # ajusta as versões das bibliotecas
-npm install -g eas-cli
-eas login
-eas init                      # cria o projeto e mostra o projectId
-eas credentials               # Android > Google Service Account > envie o JSON secreto do passo 2.3
-```
-Edite `app/app.json`:
-- `supabaseUrl` e `supabaseAnonKey` → valores do passo 1.5;
-- `eas.projectId` → o que o `eas init` mostrou;
-- `android.package` → o mesmo pacote do Firebase.
+### 3. APK do celular (gerado pelo GitHub)
+1. No GitHub, em **Settings > Secrets and variables > Actions > Secrets**, crie `ANDROID_KEYSTORE_PASSWORD` com a senha da chave de assinatura (`app/release.p12`).
+2. Em **Actions > App Android (APK) > Run workflow**. Ao terminar, o `.apk` aparece em **Artifacts**.
+3. Ao publicar uma Release com tag `v1.0.0`, o APK e o instalador do PC são anexados sozinhos.
 
-Gere o APK:
-```
-npm run apk
-```
-No fim, o EAS mostra um link para baixar o `.apk`.
+Guarde a senha da chave: sem ela, versões novas do app não instalam por cima da antiga.
 
 ### 4. Instalador do PC (.exe) e Release no GitHub
 1. No repositório, abra **Settings > Secrets and variables > Actions > aba Variables** e crie:
    - `SUPABASE_URL` = Project URL do passo 1.5
    - `SUPABASE_ANON_KEY` = chave anon do passo 1.5
 2. Para testar o build: **Actions > Instalador do PC (Windows) > Run workflow**. Ao terminar, o `AlertaRoblox-Setup-x.y.z.exe` aparece em **Artifacts**.
-3. Para publicar: em **Releases > Draft a new release**, crie a tag `v1.0.0` e publique. O GitHub gera o instalador sozinho e anexa na Release. Depois anexe o `.apk` do passo 3 na mesma Release.
+3. Para publicar: em **Releases > Draft a new release**, crie a tag `v1.0.0` e publique. O GitHub gera o instalador e o APK sozinho e anexa os dois na Release.
 
 O build roda numa máquina Windows do GitHub: empacota o `monitor.py` com PyInstaller, testa se a leitura de texto funciona e gera o instalador com Inno Setup.
 

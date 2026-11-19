@@ -1,7 +1,6 @@
 import { Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
 // Mostra a notificacao mesmo com o app aberto.
@@ -39,8 +38,8 @@ export async function registrarCelular() {
   if (status !== 'granted') {
     throw new Error('Permita as notificacoes do app nas configuracoes do celular.');
   }
-  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-  const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+  // Token do Firebase (FCM) deste celular; a nuvem manda o push direto por ele.
+  const { data: token } = await Notifications.getDevicePushTokenAsync();
   const { error } = await supabase.rpc('registrar_token', { p_token: token });
   if (error) throw new Error(error.message);
   tokenAtual = token;
@@ -57,7 +56,8 @@ export async function desregistrarCelular() {
 // Tocar na notificacao abre o servidor no Roblox (se tiver link).
 export function ouvirToques() {
   const abrir = (resp) => {
-    const link = resp?.notification?.request?.content?.data?.link;
+    const req = resp?.notification?.request;
+    const link = req?.content?.data?.link || req?.trigger?.remoteMessage?.data?.link;
     if (link) Linking.openURL(link).catch(() => {});
   };
   Notifications.getLastNotificationResponseAsync().then(abrir);

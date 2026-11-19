@@ -96,7 +96,7 @@ begin
   if auth.uid() is null then
     raise exception 'nao autenticado';
   end if;
-  if p_token !~ '^Expo(nent)?PushToken\[[A-Za-z0-9_-]+\]$' then
+  if p_token !~ '^[A-Za-z0-9_:-]{50,500}$' then
     raise exception 'token invalido';
   end if;
   insert into public.push_tokens (token, user_id)
