@@ -57,6 +57,21 @@ jobs:
           --collect-binaries onnxruntime
           monitor.py
 
+      # PC zerado pode nao ter o Visual C++ (o leitor de texto precisa dele).
+      # Leva as DLLs junto com o programa (distribuicao permitida pela Microsoft).
+      - name: Incluir DLLs do Visual C++
+        shell: pwsh
+        run: |
+          $destino = "pc\dist\AlertaRoblox\_internal"
+          if (-not (Test-Path $destino)) { $destino = "pc\dist\AlertaRoblox" }
+          foreach ($dll in "msvcp140.dll","msvcp140_1.dll","msvcp140_2.dll","vcruntime140.dll","vcruntime140_1.dll","concrt140.dll") {
+            $origem = "C:\Windows\System32\$dll"
+            if ((Test-Path $origem) -and -not (Test-Path "$destino\$dll")) {
+              Copy-Item $origem $destino
+              Write-Host "incluida: $dll"
+            }
+          }
+
       - name: Autoteste do .exe (leitura de texto)
         working-directory: pc
         run: dist\AlertaRoblox\AlertaRoblox.exe autoteste
