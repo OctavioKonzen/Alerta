@@ -95,6 +95,14 @@ export default function Discord() {
     ]);
   }
 
+  async function todos() {
+    try {
+      const r = await chamar('participar_todos');
+      Alert.alert('Discord', r.total ? `Pronto! Seus alertas vao para ${r.total} servidor(es).` : 'Nenhum servidor tem canal escolhido ainda.');
+    } catch (e) { Alert.alert('Discord', e.message); }
+    carregar();
+  }
+
   function desligar(g) {
     Alert.alert('Desligar canal', `Desligar o canal de alertas de "${g.nome}"? Para os alertas de TODOS os membros.`, [
       { text: 'Cancelar', style: 'cancel' },
@@ -158,6 +166,11 @@ export default function Discord() {
             <Text style={[s.valor, { fontWeight: '700' }]}>{painel.nome}</Text>
             {erro ? <Text style={[s.erro, { marginTop: 8 }]}>{erro}</Text> : null}
             {convite}
+            {painel.servidores?.some((g) => g.canal && !g.participando) ? (
+              <TouchableOpacity style={s.botao} onPress={todos}>
+                <Text style={s.botaoTexto}>Mandar em todos</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={s.botaoSec} onPress={desconectar}>
               <Text style={[s.botaoSecTexto, { color: '#ff6b6b' }]}>Desconectar Discord</Text>
             </TouchableOpacity>

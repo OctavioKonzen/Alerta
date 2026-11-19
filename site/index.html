@@ -203,6 +203,7 @@
         <div class="detalhe">Aparecem os servidores onde você e o bot estão. Escolha para onde vão os seus alertas; só administradores escolhem o canal.</div>
       </div>
       <div class="espaco"></div>
+      <button class="btn" id="btnTodos" title="Mandar meus alertas em todos os servidores que já têm canal">Mandar em todos</button>
       <button class="btn" id="btnAtualizar" title="Atualizar">↻ Atualizar</button>
       <a class="btn pri" id="btnConvite" target="_blank" rel="noopener">+ Adicionar bot</a>
     </div>
@@ -509,6 +510,15 @@
   $("btnEntrarTopo").addEventListener("click", entrar);
   $("btnSair").addEventListener("click", sair);
   $("btnAtualizar").addEventListener("click", carregar);
+  $("btnTodos").addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const r = await chamar("participar_todos");
+      aviso(r.total ? `Pronto! Seus alertas vão para ${r.total} servidor(es).` : "Nenhum servidor tem canal escolhido ainda.", !r.total);
+      carregar();
+    } catch (e) { aviso(e.message, true); }
+    b.disabled = false;
+  });
   $("formFrase").addEventListener("submit", adicionarFrase);
   $("btnFecharModal").addEventListener("click", fecharModal);
   $("fundoModal").addEventListener("click", (e) => { if (e.target === $("fundoModal")) fecharModal(); });

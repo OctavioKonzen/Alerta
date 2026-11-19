@@ -1489,6 +1489,8 @@ class PainelDiscord:
         botao(topo, "+ Adicionar bot", lambda: webbrowser.open(r["convite"]), "pri", width=140).pack(side="right", padx=8)
         ctk.CTkLabel(c, text=f"Conectado como {r.get('nome')}  ·  aparecem os servidores onde você e o bot estão",
                      text_color=COR["fraco"], font=fonte(12), anchor="w").pack(fill="x", pady=(2, 10))
+        if any(g.get("canal") and not g.get("participando") for g in (r.get("servidores") or [])):
+            botao(c, "Mandar meus alertas em todos os servidores com canal", self.todos, height=34).pack(fill="x", pady=(0, 8))
 
         servidores = r.get("servidores") or []
         if not servidores:
@@ -1550,6 +1552,13 @@ class PainelDiscord:
                 botao(linha, "Desligar canal", lambda: self.desligar(g), "perigo", height=32).pack(side="left")
         if not linha.winfo_children():
             linha.destroy()
+
+    def todos(self):
+        def fim(r, e):
+            total = (r or {}).get("total", 0)
+            self._depois(e, f"Pronto! Seus alertas vão para {total} servidor(es)." if total
+                         else "Nenhum servidor tem canal escolhido ainda.")
+        self.app.em_segundo_plano(lambda: chamar_discord("participar_todos"), fim)
 
     def acao(self, qual, g, msg_ok):
         self.app.em_segundo_plano(lambda: chamar_discord(qual, guild_id=g["id"]),

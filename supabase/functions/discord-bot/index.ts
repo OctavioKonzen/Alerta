@@ -275,6 +275,15 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     return { ok: true, canal: cfg.canal_nome };
   }
 
+  // Mandar os MEUS alertas em todos os servidores que ja tem canal
+  if (qual === "participar_todos") {
+    const ids = (await servidoresEmComum(pessoa.token)).map((g) => g.id);
+    const { data: cfgs } = await supa.from("discord_servidores").select("guild_id").in("guild_id", ids.length ? ids : ["-"]);
+    const linhas = (cfgs ?? []).map((c) => ({ user_id: userId, guild_id: c.guild_id }));
+    if (linhas.length) await supa.from("discord_participantes").upsert(linhas, { onConflict: "user_id,guild_id" });
+    return { ok: true, total: linhas.length };
+  }
+
   // Desligar o canal do servidor: para os alertas de TODOS (so administrador)
   if (qual === "desligar") {
     const guildId = String(corpo.guild_id);
@@ -515,7 +524,7 @@ Deno.serve(async (req) => {
     if (chavePc) {
       const dono = await donoDoPc(chavePc);
       if (!dono) return json({ erro: "chave do PC invalida, conecte o PC de novo" }, 401);
-      if (!["painel", "canais", "escolher", "remover", "participar", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
@@ -530,7 +539,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover", "participar", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
