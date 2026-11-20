@@ -56,7 +56,8 @@ MENSAGENS = {
 }
 LIMIAR_TEXTO = 0.80      # 0 a 1. Menor = tolera mais erros de leitura (e mais falsos alarmes)
 INTERVALO = 1.0          # segundos entre cada verificacao
-COOLDOWN = 30            # segundos minimos entre dois alertas da mesma mensagem
+COOLDOWN = 120           # segundos minimos entre dois alertas da mesma frase
+SUMIU_SEG = 15           # a mensagem so "sumiu" depois de tantos segundos sem aparecer
 ZOOM_OCR = 2             # aumenta a imagem antes de ler (ajuda com letras pequenas)
 
 ALERTA_TELA = False      # True = tambem pisca a tela do PC (F8 para parar)
@@ -182,6 +183,13 @@ def carregar_opcoes():
         else:
             opcoes[chave] = globals()[var]
             mudou = True
+    # Versao 2 das opcoes: o padrao do cooldown passou de 30 para 120 s (evita alerta repetido).
+    if dados.get("opcoes_versao", 1) < 2:
+        if opcoes.get("cooldown") == 30:
+            opcoes["cooldown"] = 120
+            globals()["COOLDOWN"] = 120
+        mudou = True
+        salvar_config(opcoes_versao=2)
     if mudou:
         salvar_config(opcoes=opcoes)
 
@@ -426,7 +434,9 @@ def enviar_alerta(frase, mensagem, teste=False, esperar=False):
                 log("Falha de conexao:", erro)
                 time.sleep(2)
                 continue
-            if status == 200:
+            if status == 200 and isinstance(r, dict) and r.get("repetido"):
+                log("Alerta repetido (ja avisado ha menos de 2 min): a nuvem ignorou a copia.")
+            elif status == 200:
                 env = r.get("enviados", 0) if isinstance(r, dict) else 0
                 aviso = r.get("aviso", "") if isinstance(r, dict) else ""
                 disc = r.get("discord", 0) if isinstance(r, dict) else 0
@@ -669,6 +679,9 @@ def alerta_tela(pai, nome):
 
 
 # ----------------------------- monitor -------------------------------------
+# Quando cada frase foi avisada pela ultima vez (sobrevive aos reinicios do monitor).
+_ultimos_alertas = {}
+
 class Monitor:
     """Le a tela em segundo plano e manda os alertas."""
 
@@ -722,9 +735,10 @@ class Monitor:
         log("Jogador:", info["jogador"] or "?", "| Servidor:", info["job_id"] or "?")
 
         chaves = {n: normalizar(t) for n, t in MENSAGENS.items()}
-        visivel = {n: False for n in chaves}   # ja alertou esta aparicao?
-        ausente = {n: 0 for n in chaves}       # leituras seguidas sem ver a mensagem
-        ultimo = {n: 0.0 for n in chaves}
+        agora0 = time.time()
+        # Se ja avisou desta frase ha pouco (mesmo antes de reiniciar), conta como "ja visivel".
+        visivel = {n: agora0 - _ultimos_alertas.get(c, 0.0) < COOLDOWN for n, c in chaves.items()}
+        visto_em = {n: agora0 for n in chaves}   # ultima vez que a frase apareceu na tela
         self.status = "Monitorando"
         log("Monitorando a area escolhida.")
 
@@ -747,19 +761,17 @@ class Monitor:
                     if self.debug and nota > 0.3:
                         log(f"  mensagem {nome}: nota {nota:.2f}")
                     if nota >= LIMIAR_TEXTO:
-                        ausente[nome] = 0
-                        if not visivel[nome] and agora - ultimo[nome] > COOLDOWN:
+                        visto_em[nome] = agora
+                        if not visivel[nome] and agora - _ultimos_alertas.get(chave, 0.0) > COOLDOWN:
                             visivel[nome] = True
-                            ultimo[nome] = agora
+                            _ultimos_alertas[chave] = agora
                             linha = linha_da_mensagem(texto, chave)
                             log(f"Detectado: {linha} ({nota:.2f})")
                             enviar_alerta(MENSAGENS[nome], linha)
                             if ALERTA_TELA and self.ao_detectar:
                                 self.ao_detectar(nome)
-                    else:
-                        ausente[nome] += 1
-                        if ausente[nome] >= 3:   # sumiu de vez: pode alertar de novo
-                            visivel[nome] = False
+                    elif agora - visto_em[nome] >= SUMIU_SEG:
+                        visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
                 parar.wait(INTERVALO)
 
 
