@@ -60,7 +60,7 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 ## Convenções
 - Textos de interface e mensagens em português. No `monitor.py`, a janela pode ter acentos; o que vai para o log/console fica sem acento.
 - Commits pequenos, em português, direto na `main` (o dono pediu para enviar direto).
-- **Contra alerta repetido:** o PC só considera que a frase sumiu depois de `SUMIU_SEG` (15 s) sem vê-la e respeita `COOLDOWN` (120 s) mesmo após reiniciar o monitor (`_ultimos_alertas`); a `smooth-responder` ignora a mesma frase da mesma conta em menos de 2 min (`repetido: true`).
+- **Contra alerta repetido:** o PC só considera que a frase sumiu depois de `SUMIU_SEG` (15 s) sem vê-la e respeita `COOLDOWN` (360 s = 6 min) mesmo após reiniciar o monitor (`_ultimos_alertas`); a `smooth-responder` ignora a mesma frase da mesma conta em menos de 6 min (`repetido: true`).
 - Erros dentro da janela do PC vão para o quadro Atividade e o `alerta.log` (`report_callback_exception`).
 - Antes de mexer no formato do alerta, mantenha compatíveis os três lados: `monitor.py` (payload) ↔ `index.ts` (validação/push) ↔ `app/src/telas/Alertas.js` (exibição).
 

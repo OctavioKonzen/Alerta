@@ -56,7 +56,7 @@ MENSAGENS = {
 }
 LIMIAR_TEXTO = 0.80      # 0 a 1. Menor = tolera mais erros de leitura (e mais falsos alarmes)
 INTERVALO = 1.0          # segundos entre cada verificacao
-COOLDOWN = 120           # segundos minimos entre dois alertas da mesma frase
+COOLDOWN = 360           # segundos minimos entre dois alertas da mesma frase (6 minutos)
 SUMIU_SEG = 15           # a mensagem so "sumiu" depois de tantos segundos sem aparecer
 ZOOM_OCR = 2             # aumenta a imagem antes de ler (ajuda com letras pequenas)
 
@@ -183,13 +183,13 @@ def carregar_opcoes():
         else:
             opcoes[chave] = globals()[var]
             mudou = True
-    # Versao 2 das opcoes: o padrao do cooldown passou de 30 para 120 s (evita alerta repetido).
-    if dados.get("opcoes_versao", 1) < 2:
-        if opcoes.get("cooldown") == 30:
-            opcoes["cooldown"] = 120
-            globals()["COOLDOWN"] = 120
+    # Versao 3 das opcoes: o padrao do cooldown passou de 30 (e depois 120) para 360 s (6 min).
+    if dados.get("opcoes_versao", 1) < 3:
+        if opcoes.get("cooldown") in (30, 120):
+            opcoes["cooldown"] = 360
+            globals()["COOLDOWN"] = 360
         mudou = True
-        salvar_config(opcoes_versao=2)
+        salvar_config(opcoes_versao=3)
     if mudou:
         salvar_config(opcoes=opcoes)
 
@@ -435,7 +435,7 @@ def enviar_alerta(frase, mensagem, teste=False, esperar=False):
                 time.sleep(2)
                 continue
             if status == 200 and isinstance(r, dict) and r.get("repetido"):
-                log("Alerta repetido (ja avisado ha menos de 2 min): a nuvem ignorou a copia.")
+                log("Alerta repetido (ja avisado ha menos de 6 min): a nuvem ignorou a copia.")
             elif status == 200:
                 env = r.get("enviados", 0) if isinstance(r, dict) else 0
                 aviso = r.get("aviso", "") if isinstance(r, dict) else ""

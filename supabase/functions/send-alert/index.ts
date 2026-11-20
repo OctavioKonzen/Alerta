@@ -252,14 +252,14 @@ Deno.serve(async (req) => {
     teste: corpo.teste === true,
     mapa: texto(corpo.mapa, 20), codigo_servidor: texto(corpo.codigo_servidor, 200),
   };
-  // Trava contra repeticao: mesma frase da mesma conta ha menos de 2 minutos = copia
+  // Trava contra repeticao: mesma frase da mesma conta ha menos de 6 minutos = copia
   // (o PC tentou de novo, ou tem dois PCs ligados na mesma conta). Testes sempre passam.
   if (!alerta.teste && alerta.frase) {
-    const doisMinutos = new Date(Date.now() - 120_000).toISOString();
+    const seisMinutos = new Date(Date.now() - 360_000).toISOString();
     const { count: repetidos } = await supa.from("alerts").select("id", { count: "exact", head: true })
-      .eq("user_id", pc.user_id).eq("frase", alerta.frase).eq("teste", false).gte("created_at", doisMinutos);
+      .eq("user_id", pc.user_id).eq("frase", alerta.frase).eq("teste", false).gte("created_at", seisMinutos);
     if ((repetidos ?? 0) > 0) {
-      return resposta({ ok: true, enviados: 0, discord: 0, repetido: true, aviso: "repetido (ja avisado ha menos de 2 min), ignorado" });
+      return resposta({ ok: true, enviados: 0, discord: 0, repetido: true, aviso: "repetido (ja avisado ha menos de 6 min), ignorado" });
     }
   }
 
