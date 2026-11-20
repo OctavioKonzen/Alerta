@@ -453,7 +453,21 @@
     return el("div", { class: "info-bloco" },
       el("div", { class: "detalhe" }, "Comando /info (Trello do Clover Retribution): funciona ", el("b", {}, onde)),
       botoes,
-      el("button", { class: "btn", onclick: carregarTrello }, "Carregar o Trello agora"));
+      el("button", { class: "btn", onclick: carregarTrello }, "Carregar o Trello agora"),
+      el("button", { class: "btn", onclick: testarInfo }, "Testar /info"));
+  }
+
+  async function testarInfo(ev) {
+    const b = ev.currentTarget; const texto = b.textContent;
+    b.disabled = true; b.textContent = "Testando...";
+    try {
+      const r = await chamar("info_diagnostico");
+      const caixa = el("div", { class: "aviso" }, el("b", {}, "Teste do /info: "), r.texto);
+      caixa.style.whiteSpace = "pre-wrap";
+      $("avisos").append(caixa);
+      setTimeout(() => caixa.remove(), 60000);
+    } catch (e) { aviso("Teste do /info falhou: " + e.message, true); }
+    b.disabled = false; b.textContent = texto;
   }
 
   async function carregarTrello(ev) {

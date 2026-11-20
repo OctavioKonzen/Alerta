@@ -292,6 +292,38 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     return { ok: true, total: linhas.length };
   }
 
+  // Diagnostico do /info (botao do site): mede cada etapa
+  if (qual === "info_diagnostico") {
+    const linhas: string[] = [];
+    const medir = async (nome: string, f: () => Promise<string>) => {
+      const t0 = performance.now();
+      try { linhas.push(`${nome}: ${await f()} (${Math.round(performance.now() - t0)} ms)`); }
+      catch (e) { linhas.push(`${nome}: ERRO ${e instanceof Error ? e.message : String(e)} (${Math.round(performance.now() - t0)} ms)`); }
+    };
+    await medir("chave publica", async () => {
+      const b = hexBytes(segredo("DISCORD_PUBLIC_KEY"));
+      return b ? `ok (${b.length} bytes)` : "INVALIDA";
+    });
+    await medir("Ed25519 nativo", async () => {
+      const b = hexBytes(segredo("DISCORD_PUBLIC_KEY"))!;
+      const k = await crypto.subtle.importKey("raw", b, { name: "Ed25519" }, false, ["verify"]);
+      await crypto.subtle.verify({ name: "Ed25519" }, k, new Uint8Array(64), new Uint8Array(1));
+      return "funciona";
+    });
+    await medir("secoes no banco", async () => {
+      const { count, error } = await supa.from("trello_listas").select("id", { count: "exact", head: true });
+      if (error) throw new Error(error.message);
+      return String(count);
+    });
+    await medir("menu de secoes", async () => `${(await menuSecoes()).components.length} menus`);
+    await medir("sugestoes", async () => {
+      const r = await sugestoes({ data: { options: [{ name: "secao", value: "Ma", focused: true }] } });
+      const j = await r.json();
+      return `${j.data?.choices?.length ?? 0} opcoes`;
+    });
+    return { ok: true, texto: linhas.join(" | ") };
+  }
+
   // Carregar o Trello agora (botao do site): mostra o resultado ou o erro exato
   if (qual === "trello_atualizar") {
     await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: null });
@@ -956,7 +988,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "info_canal", "trello_atualizar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "info_canal", "trello_atualizar", "info_diagnostico", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 
