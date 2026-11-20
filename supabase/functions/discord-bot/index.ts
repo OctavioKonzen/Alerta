@@ -554,11 +554,11 @@ function emSegundoPlano(p: Promise<unknown>) {
 
 const COMANDOS = [{
   name: "info",
-  description: "Informacoes do Clover Retribution (Trello oficial)",
+  description: "Informacoes do Clover Retribution: digite /info e aperte Enter",
   contexts: [0], integration_types: [0],
   options: [
-    { type: 3, name: "secao", description: "Secao (ex.: Weapons, Races, Magics)", required: true, autocomplete: true },
-    { type: 3, name: "item", description: "O item que voce quer ver", required: true, autocomplete: true },
+    { type: 3, name: "secao", description: "Opcional: secao (ex.: Weapons, Races, Magics)", required: false, autocomplete: true },
+    { type: 3, name: "item", description: "Opcional: o item (se escolher, ja mostra no chat)", required: false, autocomplete: true },
   ],
 }];
 
@@ -713,53 +713,137 @@ function partes(texto: string, max = 3900) {
   return saida;
 }
 
-async function enviarCartao(i: Record<string, any>) {
-  const { o } = opcoes(i);
-  const webhook = `${API}/webhooks/${i.application_id}/${i.token}`;
-  const editar = (corpo: unknown) => fetch(`${webhook}/messages/@original`, {
+// ---------- mensagens do /info ----------
+function webhookDe(i: Record<string, any>) {
+  return `${API}/webhooks/${i.application_id}/${i.token}`;
+}
+async function editarOriginal(i: Record<string, any>, corpo: unknown) {
+  const r = await fetch(`${webhookDe(i)}/messages/@original`, {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
   });
-  let { data: c } = /^[0-9a-f]{24}$/.test(o.item)
-    ? await supa.from("trello_cartoes").select("*").eq("id", o.item).maybeSingle()
+  if (!r.ok) console.error("editar original", r.status, await r.text());
+}
+async function novaMensagem(i: Record<string, any>, corpo: Record<string, unknown>) {
+  const r = await fetch(webhookDe(i), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
+  });
+  if (!r.ok) console.error("mensagem nova", r.status, await r.text());
+}
+
+// Monta as mensagens de um cartao (texto completo + imagens), sem links do Trello.
+async function mensagensDoCartao(idOuNome: string) {
+  let { data: c } = /^[0-9a-f]{24}$/.test(idOuNome)
+    ? await supa.from("trello_cartoes").select("*").eq("id", idOuNome).maybeSingle()
     : { data: null };
-  if (!c && limpa(o.item)) {
-    const { data } = await supa.from("trello_cartoes").select("*").ilike("nome", `%${limpa(o.item)}%`).order("pos").limit(1);
+  if (!c && limpa(idOuNome)) {
+    const { data } = await supa.from("trello_cartoes").select("*").ilike("nome", `%${limpa(idOuNome)}%`).order("pos").limit(1);
     c = data?.[0] ?? null;
   }
-  if (!c) {
-    await editar({ content: "Nao encontrei esse item. Comece a digitar e escolha uma das sugestoes." });
-    return;
-  }
+  if (!c) return null;
   const { data: lista } = await supa.from("trello_listas").select("nome").eq("id", c.id_lista).maybeSingle();
-  const pedacos = partes(c.texto || "_(sem descricao)_");
+  const pedacos = partes(c.texto || "_(sem descricao)_").slice(0, 5);
   const imagens: string[] = Array.isArray(c.imagens) ? c.imagens : [];
   const rodape = { text: `${lista?.nome ?? "Clover Retribution"} · Clover Retribution` };
-  const primeira = {
-    allowed_mentions: { parse: [] },
-    embeds: [
-      {
-        title: String(c.nome).slice(0, 256), description: pedacos[0], color: COR_INFO,
-        footer: pedacos.length === 1 ? rodape : undefined,
-        image: imagens[0] ? { url: imagens[0] } : undefined,
-      },
-      ...(pedacos.length === 1 ? imagens.slice(1, 4).map((u) => ({ color: COR_INFO, image: { url: u } })) : []),
-    ],
-  };
-  await editar(primeira);
-  for (let k = 1; k < Math.min(pedacos.length, 5); k++) {
-    const ultimo = k === Math.min(pedacos.length, 5) - 1;
-    await fetch(webhook, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        allowed_mentions: { parse: [] },
-        embeds: [{
-          description: pedacos[k] + (ultimo && pedacos.length > 5 ? "\n\n_(texto muito longo, cortado)_" : ""),
-          color: COR_INFO, footer: ultimo ? rodape : undefined,
-        }, ...(ultimo ? imagens.slice(1, 4).map((u) => ({ color: COR_INFO, image: { url: u } })) : [])],
-      }),
+  return pedacos.map((texto, k) => {
+    const ultimo = k === pedacos.length - 1;
+    return {
+      allowed_mentions: { parse: [] },
+      embeds: [
+        {
+          title: k === 0 ? String(c.nome).slice(0, 256) : undefined, description: texto, color: COR_INFO,
+          footer: ultimo ? rodape : undefined,
+          image: k === 0 && imagens[0] ? { url: imagens[0] } : undefined,
+        },
+        ...(ultimo ? imagens.slice(1, 4).map((u) => ({ color: COR_INFO, image: { url: u } })) : []),
+      ],
+    };
+  });
+}
+
+// Menu das secoes (ate 25 opcoes por menu; o Discord deixa 5 menus por mensagem)
+async function menuSecoes() {
+  const [{ data: listas }, { data: cards }] = await Promise.all([
+    supa.from("trello_listas").select("id, nome").order("pos"),
+    supa.from("trello_cartoes").select("id_lista"),
+  ]);
+  const qtd = new Map<string, number>();
+  for (const c of cards ?? []) qtd.set(c.id_lista, (qtd.get(c.id_lista) ?? 0) + 1);
+  const ls = (listas ?? []).filter((l) => (qtd.get(l.id) ?? 0) > 0);
+  const linhas = [];
+  for (let k = 0; k < ls.length && linhas.length < 5; k += 25) {
+    const grupo = ls.slice(k, k + 25);
+    linhas.push({
+      type: 1,
+      components: [{
+        type: 3, custom_id: `info_sec:${k}`,
+        placeholder: ls.length > 25 ? `Secoes (${k + 1} a ${k + grupo.length})` : "Escolha a secao",
+        options: grupo.map((l) => ({
+          label: l.nome.slice(0, 100), value: l.id, description: `${qtd.get(l.id)} item(ns)`,
+        })),
+      }],
     });
   }
+  return {
+    content: "**Clover Retribution** · escolha a secao:",
+    embeds: [], components: linhas,
+  };
 }
+
+// Menu dos itens de uma secao, com paginas de 100 (4 menus de 25 + botoes)
+async function menuItens(idLista: string, pagina: number) {
+  const [{ data: lista }, { data: cards }] = await Promise.all([
+    supa.from("trello_listas").select("nome").eq("id", idLista).maybeSingle(),
+    supa.from("trello_cartoes").select("id, nome").eq("id_lista", idLista).order("pos"),
+  ]);
+  const todos = cards ?? [];
+  const POR_PAGINA = 100;
+  const paginas = Math.max(1, Math.ceil(todos.length / POR_PAGINA));
+  const p = Math.min(Math.max(0, pagina), paginas - 1);
+  const daPagina = todos.slice(p * POR_PAGINA, (p + 1) * POR_PAGINA);
+  const linhas: unknown[] = [];
+  for (let k = 0; k < daPagina.length; k += 25) {
+    const grupo = daPagina.slice(k, k + 25);
+    const ini = p * POR_PAGINA + k + 1;
+    linhas.push({
+      type: 1,
+      components: [{
+        type: 3, custom_id: `info_item:${idLista}:${p}:${k}`,
+        placeholder: todos.length > 25 ? `Itens ${ini} a ${ini + grupo.length - 1}` : "Escolha o item",
+        options: grupo.map((c) => ({ label: c.nome.slice(0, 100), value: c.id })),
+      }],
+    });
+  }
+  const botoes = [{ type: 2, style: 2, label: "◀ Secoes", custom_id: "info_voltar" }];
+  if (paginas > 1) {
+    botoes.push({ type: 2, style: 2, label: "◀ Anterior", custom_id: `info_pag:${idLista}:${p - 1}`, disabled: p === 0 } as never);
+    botoes.push({ type: 2, style: 2, label: "Proxima ▶", custom_id: `info_pag:${idLista}:${p + 1}`, disabled: p >= paginas - 1 } as never);
+  }
+  linhas.push({ type: 1, components: botoes });
+  return {
+    content: `**${lista?.nome ?? "Secao"}** · ${todos.length} item(ns)` + (paginas > 1 ? ` · pagina ${p + 1} de ${paginas}` : "") +
+      "\nEscolha o item para mostrar no chat:",
+    embeds: [], components: linhas,
+  };
+}
+
+// Mostra o cartao no chat (para todos) em mensagens novas
+async function postarCartao(i: Record<string, any>, idOuNome: string) {
+  const msgs = await mensagensDoCartao(idOuNome);
+  if (!msgs) return false;
+  for (const m of msgs) await novaMensagem(i, m);
+  return true;
+}
+
+async function protegido(i: Record<string, any>, tarefa: () => Promise<void>) {
+  try {
+    await tarefa();
+  } catch (e) {
+    console.error("/info:", e);
+    await editarOriginal(i, { content: "Deu um erro no /info: " + (e instanceof Error ? e.message : String(e)), components: [], embeds: [] });
+  }
+}
+
+let comandosEnviados = false;
 
 async function interacaoDiscord(req: Request) {
   const corpo = await req.text();
@@ -769,21 +853,61 @@ async function interacaoDiscord(req: Request) {
     emSegundoPlano(registrarComandos(String(i.application_id)));
     return json({ type: 1 });
   }
+  if (!comandosEnviados && i.application_id) {          // garante a definicao mais nova do /info no Discord
+    comandosEnviados = true;
+    emSegundoPlano(registrarComandos(String(i.application_id)));
+  }
+  if (i.type === 4) return await sugestoes(i);          // sugestoes enquanto digita (atalho /info secao item)
   emSegundoPlano(atualizarTrello());                    // mantem a copia do Trello em dia
-  if (i.type === 4) return await sugestoes(i);          // sugestoes enquanto digita
+
+  // /info: responde NA HORA ("pensando...") e monta tudo em segundo plano (o Discord so espera 3 s)
   if (i.type === 2 && i.data?.name === "info") {
     if (!i.guild_id) return json({ type: 4, data: { content: "Use o /info dentro de um servidor.", flags: 64 } });
-    const { data: restrito } = await supa.from("discord_info_canal").select("channel_id")
-      .eq("guild_id", String(i.guild_id)).maybeSingle();
-    if (restrito && restrito.channel_id !== String(i.channel_id ?? i.channel?.id)) {
-      return json({ type: 4, data: { content: `Neste servidor o /info funciona so em <#${restrito.channel_id}>.`, flags: 64 } });
-    }
-    const { count } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
-    if (!count) {
-      return json({ type: 4, data: { content: "Estou carregando as informacoes do Trello pela primeira vez. Tente de novo em 1 minuto.", flags: 64 } });
-    }
-    emSegundoPlano(enviarCartao(i));
-    return json({ type: 5 });                            // "pensando..." enquanto monta a resposta
+    const { o } = opcoes(i);
+    const direto = Boolean(limpa(o.item ?? ""));       // atalho: /info secao item -> mostra direto no chat
+    emSegundoPlano(protegido(i, async () => {
+      const { data: restrito } = await supa.from("discord_info_canal").select("channel_id")
+        .eq("guild_id", String(i.guild_id)).maybeSingle();
+      if (restrito && restrito.channel_id !== String(i.channel_id ?? i.channel?.id)) {
+        await editarOriginal(i, { content: `Neste servidor o /info funciona so em <#${restrito.channel_id}>.` });
+        return;
+      }
+      const { count } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
+      if (!count) {
+        await atualizarTrello(true).catch((e) => console.error(e));
+        const { count: depois } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
+        if (!depois) {
+          await editarOriginal(i, { content: "Estou carregando as informacoes do Trello. Tente de novo em 1 minuto." });
+          return;
+        }
+      }
+      if (direto) {
+        const msgs = await mensagensDoCartao(o.item);
+        if (!msgs) { await editarOriginal(i, { content: "Nao encontrei esse item." }); return; }
+        await editarOriginal(i, msgs[0]);
+        for (const m of msgs.slice(1)) await novaMensagem(i, m);
+      } else {
+        await editarOriginal(i, /^[0-9a-f]{24}$/.test(o.secao ?? "") ? await menuItens(o.secao, 0) : await menuSecoes());
+      }
+    }));
+    return json({ type: 5, data: direto ? {} : { flags: 64 } });   // menus so para quem digitou
+  }
+
+  // Cliques nos menus/botoes do /info
+  if (i.type === 3) {
+    const id = String(i.data?.custom_id ?? "");
+    const valor = String(i.data?.values?.[0] ?? "");
+    emSegundoPlano(protegido(i, async () => {
+      if (id.startsWith("info_sec:")) await editarOriginal(i, await menuItens(valor, 0));
+      else if (id.startsWith("info_pag:")) {
+        const [, idLista, pag] = id.split(":");
+        await editarOriginal(i, await menuItens(idLista, Number(pag) || 0));
+      } else if (id === "info_voltar") await editarOriginal(i, await menuSecoes());
+      else if (id.startsWith("info_item:")) {
+        if (!(await postarCartao(i, valor))) await novaMensagem(i, { content: "Nao encontrei esse item.", flags: 64 });
+      }
+    }));
+    return json({ type: 6 });                           // "ok, ja vou atualizar"
   }
   return json({ type: 4, data: { content: "Comando desconhecido.", flags: 64 } });
 }
