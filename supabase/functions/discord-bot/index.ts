@@ -24,7 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
-const VERSAO_BOT = "2026-11-20.4";   // muda a cada publicacao (para saber qual versao esta no ar)
+const VERSAO_BOT = "2026-11-20.5";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -706,8 +706,13 @@ async function atualizarTrello(forcar = false) {
     // tira o que saiu do Trello
     const idsListas = listas.map((l) => l.id), idsCartoes = new Set(cartoes.map((c) => c.id));
     await supa.from("trello_listas").delete().not("id", "in", `(${idsListas.map((x) => `"${x}"`).join(",") || '""'})`);
-    const { data: antigos } = await supa.from("trello_cartoes").select("id");
-    const sobra = (antigos ?? []).map((a) => a.id).filter((id) => !idsCartoes.has(id));
+    const antigos: string[] = [];
+    for (let de = 0; de < 20000; de += 1000) {
+      const { data } = await supa.from("trello_cartoes").select("id").order("id").range(de, de + 999);
+      for (const a of data ?? []) antigos.push(a.id);
+      if (!data || data.length < 1000) break;
+    }
+    const sobra = antigos.filter((id) => !idsCartoes.has(id));
     for (let i = 0; i < sobra.length; i += 200) await supa.from("trello_cartoes").delete().in("id", sobra.slice(i, i + 200));
     await supa.from("trello_estado").upsert({ id: 1, atualizado_em: new Date().toISOString(), atualizando_desde: null });
     console.log(`Trello atualizado: ${listas.length} secoes, ${cartoes.length} cartoes`);
@@ -762,6 +767,18 @@ function partes(texto: string, max = 3900) {
   return saida;
 }
 
+// O banco entrega no maximo 1000 linhas por consulta: le em partes.
+async function todosOsIdsDeLista(): Promise<string[]> {
+  const ids: string[] = [];
+  for (let de = 0; de < 20000; de += 1000) {
+    const { data, error } = await supa.from("trello_cartoes").select("id_lista").order("id").range(de, de + 999);
+    if (error) throw new Error(error.message);
+    for (const c of data ?? []) ids.push(c.id_lista);
+    if (!data || data.length < 1000) break;
+  }
+  return ids;
+}
+
 // ---------- mensagens do /info ----------
 function webhookDe(i: Record<string, any>) {
   return `${API}/webhooks/${i.application_id}/${i.token}`;
@@ -811,12 +828,12 @@ async function mensagensDoCartao(idOuNome: string) {
 
 // Menu das secoes (ate 25 opcoes por menu; o Discord deixa 5 menus por mensagem)
 async function menuSecoes() {
-  const [{ data: listas }, { data: cards }] = await Promise.all([
+  const [{ data: listas }, idsLista] = await Promise.all([
     supa.from("trello_listas").select("id, nome").order("pos"),
-    supa.from("trello_cartoes").select("id_lista"),
+    todosOsIdsDeLista(),
   ]);
   const qtd = new Map<string, number>();
-  for (const c of cards ?? []) qtd.set(c.id_lista, (qtd.get(c.id_lista) ?? 0) + 1);
+  for (const id of idsLista) qtd.set(id, (qtd.get(id) ?? 0) + 1);
   const ls = (listas ?? []).filter((l) => (qtd.get(l.id) ?? 0) > 0);
   const linhas = [];
   for (let k = 0; k < ls.length && linhas.length < 5; k += 25) {
