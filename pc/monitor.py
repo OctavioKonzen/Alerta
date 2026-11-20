@@ -113,6 +113,11 @@ try:  # evita problemas de escala (DPI) no Windows
 except Exception:
     pass
 
+try:  # prioridade "abaixo do normal": o Windows sempre da preferencia ao Roblox
+    ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
+except Exception:
+    pass
+
 
 # ----------------------------- registro (log) ------------------------------
 _fila_log = None          # a janela coloca uma fila aqui para mostrar as mensagens
@@ -531,9 +536,13 @@ def _criar_leitor():
         return _leitor
     for modulo in ("rapidocr_onnxruntime", "rapidocr"):
         try:
-            motor = __import__(modulo).RapidOCR()
+            # 1 nucleo so: o padrao usa todos e deixa o Roblox lento
+            motor = __import__(modulo).RapidOCR(intra_op_num_threads=1, inter_op_num_threads=1)
         except Exception:
-            continue
+            try:
+                motor = __import__(modulo).RapidOCR()
+            except Exception:
+                continue
 
         def ler_rapid(gray, motor=motor):
             img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
@@ -742,10 +751,22 @@ class Monitor:
         self.status = "Monitorando"
         log("Monitorando a area escolhida.")
 
+        anterior, texto_anterior, pulos = None, "", 0
         with mss.mss() as sct:
             while not parar.is_set():
                 try:
-                    texto = ler(preparar(capturar(sct, regiao)))
+                    quadro = capturar(sct, regiao)
+                    # Miniatura para comparar: se a tela nao mudou, nao precisa ler de novo
+                    # (o leitor de texto e a parte pesada; o chat fica parado quase sempre).
+                    mini = cv2.resize(quadro.max(axis=2), None, fx=0.25, fy=0.25,
+                                      interpolation=cv2.INTER_AREA).astype(np.int16)
+                    igual = (anterior is not None and anterior.shape == mini.shape
+                             and float(np.abs(mini - anterior).mean()) < 1.5 and pulos < 30)
+                    if igual:
+                        texto, pulos = texto_anterior, pulos + 1
+                    else:
+                        texto = ler(preparar(quadro))
+                        anterior, texto_anterior, pulos = mini, texto, 0
                 except Exception as erro:          # falha passageira: tenta de novo
                     log("Erro na leitura (tentando de novo):", erro)
                     parar.wait(INTERVALO)
