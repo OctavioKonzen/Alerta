@@ -113,6 +113,11 @@ try:  # evita problemas de escala (DPI) no Windows
 except Exception:
     pass
 
+try:
+    cv2.setNumThreads(1)   # OpenCV com 1 nucleo so (sobra processador para o Roblox)
+except Exception:
+    pass
+
 try:  # prioridade "abaixo do normal": o Windows sempre da preferencia ao Roblox
     ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x4000)
 except Exception:
@@ -546,7 +551,10 @@ def _criar_leitor():
 
         def ler_rapid(gray, motor=motor):
             img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-            res = motor(img)
+            try:
+                res = motor(img, use_cls=False)   # chat e texto reto: sem detector de inclinacao
+            except TypeError:
+                res = motor(img)
             if isinstance(res, tuple):            # versao antiga: (lista, tempo)
                 itens = res[0] or []
                 return "\n".join(str(item[1]) for item in itens)
@@ -688,6 +696,27 @@ def alerta_tela(pai, nome):
 
 
 # ----------------------------- monitor -------------------------------------
+def roblox_aberto():
+    """True se a janela do Roblox existe e nao esta minimizada (fora do Windows: sempre True)."""
+    try:
+        u = ctypes.windll.user32
+    except Exception:
+        return True
+    try:
+        hwnd = u.FindWindowW(None, "Roblox")
+        return bool(hwnd) and not u.IsIconic(hwnd)
+    except Exception:
+        return True
+
+
+def prioridade_baixa_nesta_thread():
+    try:
+        k = ctypes.windll.kernel32
+        k.SetThreadPriority(k.GetCurrentThread(), -2)   # THREAD_PRIORITY_LOWEST
+    except Exception:
+        pass
+
+
 # Quando cada frase foi avisada pela ultima vez (sobrevive aos reinicios do monitor).
 _ultimos_alertas = {}
 
@@ -751,9 +780,27 @@ class Monitor:
         self.status = "Monitorando"
         log("Monitorando a area escolhida.")
 
+        prioridade_baixa_nesta_thread()
         anterior, texto_anterior, pulos = None, "", 0
+        notas_cache, texto_cache = {}, None
+        espera = INTERVALO
+        pausado = False
         with mss.mss() as sct:
             while not parar.is_set():
+                # Sem Roblox aberto (ou minimizado) nao ha o que ler: nao gasta nada.
+                if not roblox_aberto():
+                    if not pausado:
+                        pausado = True
+                        self.status = "Esperando o Roblox abrir"
+                        log("Roblox fechado ou minimizado: monitoramento em pausa.")
+                    anterior = None
+                    parar.wait(3)
+                    continue
+                if pausado:
+                    pausado = False
+                    self.status = "Monitorando"
+                    log("Roblox aberto: monitorando de novo.")
+                espera = INTERVALO
                 try:
                     quadro = capturar(sct, regiao)
                     # Miniatura para comparar: se a tela nao mudou, nao precisa ler de novo
@@ -765,20 +812,27 @@ class Monitor:
                     if igual:
                         texto, pulos = texto_anterior, pulos + 1
                     else:
+                        inicio = time.perf_counter()
                         texto = ler(preparar(quadro))
+                        gasto = time.perf_counter() - inicio
                         anterior, texto_anterior, pulos = mini, texto, 0
+                        # Limite de uso: o leitor ocupa no maximo ~1/3 do tempo de um nucleo.
+                        espera = max(INTERVALO, gasto * 2)
                 except Exception as erro:          # falha passageira: tenta de novo
                     log("Erro na leitura (tentando de novo):", erro)
                     parar.wait(INTERVALO)
                     continue
                 if parar.is_set():
                     break
-                norm = normalizar(texto)
-                if self.debug:
+                if self.debug and texto is not texto_cache:
                     log("leu:", texto.replace("\n", " | ")[:300] or "(nada)")
+                if texto is not texto_cache:     # so recalcula as notas quando o texto mudou
+                    norm = normalizar(texto)
+                    notas_cache = {n: similaridade(c, norm) for n, c in chaves.items()}
+                    texto_cache = texto
                 agora = time.time()
                 for nome, chave in chaves.items():
-                    nota = similaridade(chave, norm)
+                    nota = notas_cache[nome]
                     if self.debug and nota > 0.3:
                         log(f"  mensagem {nome}: nota {nota:.2f}")
                     if nota >= LIMIAR_TEXTO:
@@ -793,7 +847,7 @@ class Monitor:
                                 self.ao_detectar(nome)
                     elif agora - visto_em[nome] >= SUMIU_SEG:
                         visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
-                parar.wait(INTERVALO)
+                parar.wait(espera)
 
 
 # ----------------------------- atualizacao automatica ----------------------
@@ -1099,7 +1153,13 @@ class App:
         self.root.after(200, self._processar_filas)
 
     def _atualizar_status(self):
-        cfg = ler_config()
+        try:
+            mtime = os.path.getmtime(CONFIG)
+        except OSError:
+            mtime = None
+        if mtime != getattr(self, "_cfg_mtime", -1):
+            self._cfg_mtime, self._cfg = mtime, ler_config()
+        cfg = self._cfg
         conectado = bool(cfg.get("chave_pc"))
         self._marcar(self.passo_conta, conectado, "Conectada" if conectado else "Não conectada")
         if not self.ocupado:
