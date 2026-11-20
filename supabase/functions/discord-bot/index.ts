@@ -13,6 +13,7 @@
 //   DISCORD_CLIENT_ID     = OAuth2 > Client ID
 //   DISCORD_CLIENT_SECRET = OAuth2 > Client Secret (Reset Secret)
 //   DISCORD_BOT_TOKEN     = Bot > Reset Token
+//   DISCORD_PUBLIC_KEY    = General Information > Public Key (para o comando /info)
 // No Developer Portal > OAuth2 > Redirects, adicione:
 //   https://vtyxkowxnesclwtndbog.supabase.co/functions/v1/discord-bot
 //
@@ -87,7 +88,7 @@ function urlLogin(estado: string, escopo: string) {
 }
 function linkConvite() {
   return `https://discord.com/oauth2/authorize?client_id=${segredo("DISCORD_CLIENT_ID")}` +
-    `&scope=bot&permissions=${PERMISSOES_BOT}`;
+    `&scope=bot+applications.commands&permissions=${PERMISSOES_BOT}`;
 }
 
 // ---------- Chamadas ao Discord ----------
@@ -244,10 +245,12 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
   if (qual === "painel") {
     const servidores = await servidoresEmComum(pessoa.token);
     const ids = servidores.map((g) => g.id);
-    const [{ data: configs }, { data: meus }] = await Promise.all([
+    const [{ data: configs }, { data: meus }, { data: infos }] = await Promise.all([
       supa.from("discord_servidores").select("guild_id, channel_id, canal_nome").in("guild_id", ids.length ? ids : ["-"]),
       supa.from("discord_participantes").select("guild_id").eq("user_id", userId),
+      supa.from("discord_info_canal").select("guild_id, channel_id, canal_nome").in("guild_id", ids.length ? ids : ["-"]),
     ]);
+    const infoDe = new Map((infos ?? []).map((c) => [c.guild_id, c]));
     const canalDe = new Map((configs ?? []).map((c) => [c.guild_id, c]));
     const participo = new Set((meus ?? []).map((m) => m.guild_id));
     return {
@@ -259,6 +262,8 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
           icone: g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null,
           canal: c ? { id: c.channel_id, nome: c.canal_nome } : null,   // canal do servidor (do admin)
           participando: participo.has(g.id),                            // meus alertas vao para la?
+          info_canal: infoDe.has(g.id)                                  // canal do /info (null = qualquer canal)
+            ? { id: infoDe.get(g.id)!.channel_id, nome: infoDe.get(g.id)!.canal_nome } : null,
         };
       }),
     };
@@ -282,6 +287,22 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     const linhas = (cfgs ?? []).map((c) => ({ user_id: userId, guild_id: c.guild_id }));
     if (linhas.length) await supa.from("discord_participantes").upsert(linhas, { onConflict: "user_id,guild_id" });
     return { ok: true, total: linhas.length };
+  }
+
+  // Canal onde o comando /info funciona (so administrador; channel_id vazio = qualquer canal)
+  if (qual === "info_canal") {
+    const guildId = String(corpo.guild_id);
+    await servidorComoAdmin(pessoa.token, guildId);
+    if (!corpo.channel_id) {
+      await supa.from("discord_info_canal").delete().eq("guild_id", guildId);
+      return { ok: true };
+    }
+    const canal = (await canaisDeTexto(guildId)).find((c) => c.id === String(corpo.channel_id));
+    if (!canal) throw new Error("canal nao encontrado");
+    await supa.from("discord_info_canal").upsert({
+      guild_id: guildId, channel_id: canal.id, canal_nome: canal.nome.slice(0, 100), updated_at: new Date().toISOString(),
+    });
+    return { ok: true };
   }
 
   // Desligar o canal do servidor: para os alertas de TODOS (so administrador)
@@ -511,11 +532,268 @@ async function retornoLogin(url: URL) {
   }
 }
 
+// ======================================================================
+// Comando /info no Discord: informacoes do Trello do Clover Retribution
+// ======================================================================
+// O Discord manda os comandos para esta funcao (Developer Portal > General
+// Information > "Interactions Endpoint URL" = endereco desta funcao).
+// Precisa do segredo DISCORD_PUBLIC_KEY (General Information > Public Key).
+// Os dados do Trello ficam copiados no banco (trello_listas / trello_cartoes)
+// e sao atualizados sozinhos a cada 30 minutos. Nenhum link do Trello e mostrado.
+
+const TRELLO_QUADRO = "xKxR061L";
+const TRELLO_ATUALIZAR_MIN = 30;
+const COR_INFO = 0x2ecc71;
+
+// deno-lint-ignore no-explicit-any
+const EdgeRT = (globalThis as any).EdgeRuntime as { waitUntil?: (p: Promise<unknown>) => void } | undefined;
+function emSegundoPlano(p: Promise<unknown>) {
+  const seguro = p.catch((e) => console.error("segundo plano:", e));
+  if (EdgeRT?.waitUntil) EdgeRT.waitUntil(seguro);
+}
+
+const COMANDOS = [{
+  name: "info",
+  description: "Informacoes do Clover Retribution (Trello oficial)",
+  contexts: [0], integration_types: [0],
+  options: [
+    { type: 3, name: "secao", description: "Secao (ex.: Weapons, Races, Magics)", required: true, autocomplete: true },
+    { type: 3, name: "item", description: "O item que voce quer ver", required: true, autocomplete: true },
+  ],
+}];
+
+async function registrarComandos(appId: string) {
+  const r = await fetch(`${API}/applications/${appId}/commands`, {
+    method: "PUT",
+    headers: { Authorization: comoBot(), "Content-Type": "application/json" },
+    body: JSON.stringify(COMANDOS),
+  });
+  if (!r.ok) console.error("falha ao registrar comandos", r.status, await r.text());
+}
+
+// ---------- assinatura dos pedidos do Discord (Ed25519) ----------
+function hexBytes(hex: string) {
+  const h = hex.trim();
+  if (!/^([0-9a-f]{2})+$/i.test(h)) return null;
+  return Uint8Array.from(h.match(/../g)!.map((x) => parseInt(x, 16)));
+}
+let chavePublicaDiscord: CryptoKey | null = null;
+async function assinaturaDiscordValida(req: Request, corpo: string) {
+  const assinatura = hexBytes(req.headers.get("x-signature-ed25519") ?? "");
+  const hora = req.headers.get("x-signature-timestamp") ?? "";
+  if (!assinatura || !hora) return false;
+  const bytes = hexBytes(segredo("DISCORD_PUBLIC_KEY"));
+  if (!bytes) throw new Error("DISCORD_PUBLIC_KEY invalida");
+  const mensagem = new TextEncoder().encode(hora + corpo);
+  try {
+    if (!chavePublicaDiscord) {
+      chavePublicaDiscord = await crypto.subtle.importKey("raw", bytes, { name: "Ed25519" }, false, ["verify"]);
+    }
+    return await crypto.subtle.verify({ name: "Ed25519" }, chavePublicaDiscord, assinatura, mensagem);
+  } catch {
+    // plano B, se o ambiente nao tiver Ed25519 no WebCrypto
+    // deno-lint-ignore no-explicit-any
+    const nacl: any = (await import("npm:tweetnacl@1.0.3")).default;
+    return nacl.sign.detached.verify(mensagem, assinatura, bytes);
+  }
+}
+
+// ---------- copia do Trello ----------
+type CartaoTrello = {
+  id: string; name: string; desc?: string; idList: string; pos?: number; shortLink?: string;
+  attachments?: { url?: string; mimeType?: string; pos?: number }[];
+};
+
+// Deixa o texto do Trello do jeito do Discord e tira todos os links do Trello.
+function converterTexto(desc: string, nomePorLink: Map<string, string>) {
+  let t = desc ?? "";
+  // [qualquer](https://trello.com/c/ABC/...) -> **Nome do cartao**
+  t = t.replace(/\[([^\]]*)\]\((https?:\/\/trello\.com\/c\/([A-Za-z0-9]+)[^)\s]*)(?:\s+"[^"]*")?\)/g,
+    (_m, texto: string, _url: string, curto: string) => {
+      const nome = nomePorLink.get(curto);
+      const visivel = texto && !/^https?:\/\//.test(texto) ? texto : (nome ?? "");
+      return visivel ? `**${visivel.replace(/\*/g, "")}**` : "";
+    });
+  // imagens embutidas do Trello e outros links do Trello: some o link, fica o texto
+  t = t.replace(/!\[[^\]]*\]\(https?:\/\/[^)]*trello[^)]*\)/g, "");
+  t = t.replace(/\[([^\]]*)\]\(https?:\/\/[^)]*trello\.com[^)]*\)/g, "$1");
+  t = t.replace(/https?:\/\/(?:[a-z0-9-]+\.)*trello\.com\/c\/([A-Za-z0-9]+)\S*/g,
+    (_m, curto: string) => (nomePorLink.has(curto) ? `**${nomePorLink.get(curto)}**` : ""));
+  t = t.replace(/https?:\/\/(?:[a-z0-9-]+\.)*trello\.com\S*/g, "");
+  // escapes do Trello que o Discord mostraria com barra (\+5 CON -> +5 CON)
+  t = t.replace(/\\([+\-.!#()\[\]>=])/g, "$1");
+  // linha "---" do Trello vira um separador visivel
+  t = t.replace(/^\s*-{3,}\s*$/gm, "──────────");
+  t = t.replace(/\n{3,}/g, "\n\n").trim();
+  return t;
+}
+
+async function atualizarTrello(forcar = false) {
+  const { data: est } = await supa.from("trello_estado").select("*").eq("id", 1).maybeSingle();
+  const agora = Date.now();
+  if (!forcar && est?.atualizado_em && agora - new Date(est.atualizado_em).getTime() < TRELLO_ATUALIZAR_MIN * 60_000) return;
+  if (est?.atualizando_desde && agora - new Date(est.atualizando_desde).getTime() < 3 * 60_000) return;   // ja tem outra
+  await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: new Date().toISOString() });
+  try {
+    const url = `https://api.trello.com/1/boards/${TRELLO_QUADRO}?fields=name&lists=open&list_fields=name,pos` +
+      `&cards=open&card_fields=name,desc,idList,pos,shortLink&card_attachments=true&card_attachment_fields=url,mimeType,pos`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Trello respondeu ${r.status}`);
+    const quadro = await r.json() as { lists: { id: string; name: string; pos: number }[]; cards: CartaoTrello[] };
+    const nomePorLink = new Map(quadro.cards.filter((c) => c.shortLink).map((c) => [c.shortLink!, c.name]));
+    const listas = quadro.lists.map((l) => ({ id: l.id, nome: l.name.trim(), pos: l.pos }));
+    const cartoes = quadro.cards.map((c) => ({
+      id: c.id, id_lista: c.idList, nome: c.name.trim(), pos: c.pos ?? 0, short_link: c.shortLink ?? null,
+      texto: converterTexto(c.desc ?? "", nomePorLink),
+      imagens: (c.attachments ?? [])
+        .filter((a) => (a.mimeType ?? "").startsWith("image/") && a.url)
+        .sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0)).slice(0, 4).map((a) => a.url),
+    }));
+    await supa.from("trello_listas").upsert(listas);
+    for (let i = 0; i < cartoes.length; i += 200) {
+      const { error } = await supa.from("trello_cartoes").upsert(cartoes.slice(i, i + 200));
+      if (error) throw new Error("salvar cartoes: " + error.message);
+    }
+    // tira o que saiu do Trello
+    const idsListas = listas.map((l) => l.id), idsCartoes = new Set(cartoes.map((c) => c.id));
+    await supa.from("trello_listas").delete().not("id", "in", `(${idsListas.map((x) => `"${x}"`).join(",") || '""'})`);
+    const { data: antigos } = await supa.from("trello_cartoes").select("id");
+    const sobra = (antigos ?? []).map((a) => a.id).filter((id) => !idsCartoes.has(id));
+    for (let i = 0; i < sobra.length; i += 200) await supa.from("trello_cartoes").delete().in("id", sobra.slice(i, i + 200));
+    await supa.from("trello_estado").upsert({ id: 1, atualizado_em: new Date().toISOString(), atualizando_desde: null });
+    console.log(`Trello atualizado: ${listas.length} secoes, ${cartoes.length} cartoes`);
+  } catch (e) {
+    await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: null });
+    throw e;
+  }
+}
+
+// ---------- respostas do comando ----------
+function opcoes(i: Record<string, any>) {
+  const lista = (i.data?.options ?? []) as { name: string; value?: string; focused?: boolean }[];
+  const o: Record<string, string> = {};
+  let foco = "";
+  for (const x of lista) { o[x.name] = String(x.value ?? ""); if (x.focused) foco = x.name; }
+  return { o, foco };
+}
+const limpa = (s: string) => s.replace(/[%_,()"\\]/g, " ").trim();
+
+async function sugestoes(i: Record<string, any>) {
+  const { o, foco } = opcoes(i);
+  let escolhas: { name: string; value: string }[] = [];
+  if (foco === "secao") {
+    let q = supa.from("trello_listas").select("id, nome").order("pos").limit(25);
+    if (limpa(o.secao)) q = q.ilike("nome", `%${limpa(o.secao)}%`);
+    const { data } = await q;
+    escolhas = (data ?? []).map((l) => ({ name: l.nome.slice(0, 100), value: l.id }));
+  } else {
+    let q = supa.from("trello_cartoes").select("id, nome").order("pos").limit(25);
+    if (/^[0-9a-f]{24}$/.test(o.secao ?? "")) q = q.eq("id_lista", o.secao);
+    else if (limpa(o.secao ?? "")) {
+      const { data: ls } = await supa.from("trello_listas").select("id").ilike("nome", `%${limpa(o.secao)}%`).limit(5);
+      if (ls?.length) q = q.in("id_lista", ls.map((l) => l.id));
+    }
+    if (limpa(o.item ?? "")) q = q.ilike("nome", `%${limpa(o.item)}%`);
+    const { data } = await q;
+    escolhas = (data ?? []).map((c) => ({ name: c.nome.slice(0, 100), value: c.id }));
+  }
+  return json({ type: 8, data: { choices: escolhas } });
+}
+
+function partes(texto: string, max = 3900) {
+  const saida: string[] = [];
+  let resto = texto;
+  while (resto.length > max) {
+    let corte = resto.lastIndexOf("\n", max);
+    if (corte < max * 0.5) corte = max;
+    saida.push(resto.slice(0, corte));
+    resto = resto.slice(corte).trimStart();
+  }
+  if (resto) saida.push(resto);
+  return saida;
+}
+
+async function enviarCartao(i: Record<string, any>) {
+  const { o } = opcoes(i);
+  const webhook = `${API}/webhooks/${i.application_id}/${i.token}`;
+  const editar = (corpo: unknown) => fetch(`${webhook}/messages/@original`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo),
+  });
+  let { data: c } = /^[0-9a-f]{24}$/.test(o.item)
+    ? await supa.from("trello_cartoes").select("*").eq("id", o.item).maybeSingle()
+    : { data: null };
+  if (!c && limpa(o.item)) {
+    const { data } = await supa.from("trello_cartoes").select("*").ilike("nome", `%${limpa(o.item)}%`).order("pos").limit(1);
+    c = data?.[0] ?? null;
+  }
+  if (!c) {
+    await editar({ content: "Nao encontrei esse item. Comece a digitar e escolha uma das sugestoes." });
+    return;
+  }
+  const { data: lista } = await supa.from("trello_listas").select("nome").eq("id", c.id_lista).maybeSingle();
+  const pedacos = partes(c.texto || "_(sem descricao)_");
+  const imagens: string[] = Array.isArray(c.imagens) ? c.imagens : [];
+  const rodape = { text: `${lista?.nome ?? "Clover Retribution"} · Clover Retribution` };
+  const primeira = {
+    allowed_mentions: { parse: [] },
+    embeds: [
+      {
+        title: String(c.nome).slice(0, 256), description: pedacos[0], color: COR_INFO,
+        footer: pedacos.length === 1 ? rodape : undefined,
+        image: imagens[0] ? { url: imagens[0] } : undefined,
+      },
+      ...(pedacos.length === 1 ? imagens.slice(1, 4).map((u) => ({ color: COR_INFO, image: { url: u } })) : []),
+    ],
+  };
+  await editar(primeira);
+  for (let k = 1; k < Math.min(pedacos.length, 5); k++) {
+    const ultimo = k === Math.min(pedacos.length, 5) - 1;
+    await fetch(webhook, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        allowed_mentions: { parse: [] },
+        embeds: [{
+          description: pedacos[k] + (ultimo && pedacos.length > 5 ? "\n\n_(texto muito longo, cortado)_" : ""),
+          color: COR_INFO, footer: ultimo ? rodape : undefined,
+        }, ...(ultimo ? imagens.slice(1, 4).map((u) => ({ color: COR_INFO, image: { url: u } })) : [])],
+      }),
+    });
+  }
+}
+
+async function interacaoDiscord(req: Request) {
+  const corpo = await req.text();
+  if (!(await assinaturaDiscordValida(req, corpo))) return new Response("assinatura invalida", { status: 401 });
+  const i = JSON.parse(corpo);
+  if (i.type === 1) {                                   // PING: ao salvar o endereco no Developer Portal
+    emSegundoPlano(registrarComandos(String(i.application_id)));
+    return json({ type: 1 });
+  }
+  emSegundoPlano(atualizarTrello());                    // mantem a copia do Trello em dia
+  if (i.type === 4) return await sugestoes(i);          // sugestoes enquanto digita
+  if (i.type === 2 && i.data?.name === "info") {
+    if (!i.guild_id) return json({ type: 4, data: { content: "Use o /info dentro de um servidor.", flags: 64 } });
+    const { data: restrito } = await supa.from("discord_info_canal").select("channel_id")
+      .eq("guild_id", String(i.guild_id)).maybeSingle();
+    if (restrito && restrito.channel_id !== String(i.channel_id ?? i.channel?.id)) {
+      return json({ type: 4, data: { content: `Neste servidor o /info funciona so em <#${restrito.channel_id}>.`, flags: 64 } });
+    }
+    const { count } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
+    if (!count) {
+      return json({ type: 4, data: { content: "Estou carregando as informacoes do Trello pela primeira vez. Tente de novo em 1 minuto.", flags: 64 } });
+    }
+    emSegundoPlano(enviarCartao(i));
+    return json({ type: 5 });                            // "pensando..." enquanto monta a resposta
+  }
+  return json({ type: 4, data: { content: "Comando desconhecido.", flags: 64 } });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
   if (req.method === "GET") return await retornoLogin(url);
   if (req.method !== "POST") return json({ erro: "metodo invalido" }, 405);
+  if (req.headers.get("x-signature-ed25519")) return await interacaoDiscord(req);   // comandos do Discord
 
   try {
     const corpo = await req.json().catch(() => ({}));
@@ -543,7 +821,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "info_canal", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 

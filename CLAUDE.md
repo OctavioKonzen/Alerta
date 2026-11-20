@@ -24,6 +24,7 @@ pc/monitor.py --(x-chave-pc)--> Supabase Edge Function --(FCM HTTP v1)--> app An
 | `supabase/functions/send-alert/index.ts` | Edge Function (Deno) que recebe o alerta e envia o push pelo Firebase e a mensagem nos canais do Discord |
 | `supabase/functions/discord-bot/index.ts` | Edge Function do painel do Discord (aba Discord do app): login com Discord, lista servidores em comum com o bot, admin escolhe o canal |
 | `site/index.html` | Site do painel do bot (GitHub Pages, `https://octaviokonzen.github.io/Alerta/`): entrar com Discord (`web_iniciar`, sessão `x-sessao-web`, tabela `sessoes_web`), escolher canal por servidor, links de download. HTML/JS puro |
+| **Comando `/info`** (em `discord-bot`) | Informações do Trello do Clover Retribution (quadro `xKxR061L`) no Discord: `/info secao item` com sugestões (autocomplete). Interações assinadas (Ed25519, segredo `DISCORD_PUBLIC_KEY`; "Interactions Endpoint URL" no Developer Portal = URL da `discord-bot`; os comandos são registrados no PING). Cópia do Trello em `trello_listas`/`trello_cartoes`, atualizada a cada 30 min pela API pública (sem chave); textos convertidos sem nenhum link do Trello. Canal permitido por servidor em `discord_info_canal`, configurado **só no site** (ação `info_canal`). SQL 0012. |
 | `.github/workflows/site.yml` | Publica a pasta `site/` no GitHub Pages |
 | `app/` | App Android em React Native/Expo SDK 53 (JS, sem TypeScript, sem react-navigation) |
 | `.github/workflows/instalador-pc.yml` | Gera `AlertaRoblox-Setup-x.y.z.exe` (Windows, Nuitka + Inno Setup) |
@@ -77,5 +78,6 @@ Mudança no banco = criar um novo `supabase/migrations/000N_*.sql` e pedir para 
 - [ ] Frases na nuvem (app aba Frases, site, janela Frases no PC; PC sincroniza a cada 1 min pela ação `frases`): rodar `0007_frases.sql`, publicar a `discord-bot` nova
 - [ ] Mapa (Normal/Jungle) e código do servidor no alerta (janela "Jogador e servidor" do PC → payload `mapa`/`codigo_servidor` → push, Discord e app): rodar `0008_mapa_codigo.sql`, publicar a `smooth-responder` nova (ela salva mesmo sem o SQL)
 - [ ] Canal por servidor + membros participam (ações `participar`, `remover` = parar os meus, `desligar` = admin desliga o canal): rodar `0009_servidor_participantes.sql` ANTES de publicar as duas funções novas
+- [ ] /info do Trello: rodar `0012_trello_info.sql`, criar o segredo `DISCORD_PUBLIC_KEY`, publicar a `discord-bot` nova, colar a URL da função em Developer Portal > General Information > Interactions Endpoint URL
 - [ ] Teste ponta a ponta: instalar o APK, criar conta, `conectar` no PC, `teste`
 - Ideias futuras: repetir o alarme no celular até abrir; tela de "esqueci a senha"; excluir conta no app; iPhone (exige conta Apple paga).

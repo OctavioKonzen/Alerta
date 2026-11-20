@@ -90,8 +90,9 @@
   .estado { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fraco); margin-top: 3px; }
   .estado.ok { color: #66bb6a; }
   .estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-  .servidor .botoes { display: flex; gap: 8px; margin-top: auto; }
+  .servidor .botoes { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
   .servidor .botoes .btn { flex: 1; }
+  .info-bloco { border-top: 1px solid var(--borda); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
   .vazio { text-align: center; padding: 48px 20px; color: var(--fraco); }
   .vazio h3 { color: var(--texto); margin: 0 0 8px; }
   .frases-cartao { margin-top: 36px; }
@@ -267,7 +268,7 @@
   const CHAVE_PUBLICA = "sb_publishable_zvhYotnIF3LIm5FzzpkjZQ_GpNsp0Bz";
   const CHAVE_SESSAO = "alerta_sessao";
   // Convite do bot: Ver canais + Enviar mensagens + Inserir links
-  const CONVITE = "https://discord.com/oauth2/authorize?client_id=1572977754025099395&scope=bot&permissions=19456";
+  const CONVITE = "https://discord.com/oauth2/authorize?client_id=1572977754025099395&scope=bot+applications.commands&permissions=19456";
   const $ = (id) => document.getElementById(id);
 
   function lerSessao() { try { return localStorage.getItem(CHAVE_SESSAO); } catch { return null; } }
@@ -438,7 +439,20 @@
       el("div", { class: "cab" }, icone, el("div", { style: "min-width:0" }, el("div", { class: "nome" }, g.nome), estado)),
       botoes.children.length ? botoes : null,
       g.admin ? el("div", { class: "detalhe", style: "margin-bottom:-6px" }, "Administrador") : null,
-      g.admin ? admin : null);
+      g.admin ? admin : null,
+      g.admin ? blocoInfo(g) : null);
+  }
+
+  // Comando /info (informacoes do Trello do Clover Retribution): em qual canal funciona
+  function blocoInfo(g) {
+    const onde = g.info_canal ? `só em #${g.info_canal.nome}` : "em qualquer canal";
+    const botoes = el("div", { class: "botoes" },
+      el("button", { class: "btn", onclick: () => abrirCanais(g, "info") }, g.info_canal ? "Trocar canal do /info" : "Escolher canal do /info"),
+      g.info_canal ? el("button", { class: "btn", onclick: (ev) => acaoServidor("info_canal", g, ev.currentTarget,
+        `O /info agora funciona em qualquer canal de ${g.nome}.`) }, "Liberar em todos") : null);
+    return el("div", { class: "info-bloco" },
+      el("div", { class: "detalhe" }, "Comando /info (Trello do Clover Retribution): funciona ", el("b", {}, onde)),
+      botoes);
   }
 
   async function acaoServidor(acao, g, botao, msgOk) {
@@ -452,23 +466,39 @@
 
   function fecharModal() { $("fundoModal").style.display = "none"; }
 
-  async function abrirCanais(g) {
-    $("tituloModal").textContent = g.nome;
+  async function abrirCanais(g, modo = "alertas") {
+    $("tituloModal").textContent = g.nome + (modo === "info" ? " · /info" : "");
     $("detalheModal").textContent = "Carregando canais...";
     const lista = $("listaCanais");
     lista.replaceChildren();
     $("fundoModal").style.display = "flex";
     try {
       const { canais } = await chamar("canais", { guild_id: g.id });
-      $("detalheModal").textContent = "Clique no canal que vai receber os alertas:";
-      const atual = g.canal && g.canal.id;
+      $("detalheModal").textContent = modo === "info"
+        ? "Clique no canal onde o comando /info vai funcionar:"
+        : "Clique no canal que vai receber os alertas:";
+      const atual = modo === "info" ? (g.info_canal && g.info_canal.id) : (g.canal && g.canal.id);
       lista.replaceChildren(...(canais || []).map((c) => el("button", {
         class: "canal" + (c.id === atual ? " atual" : ""),
-        onclick: () => escolher(g, c),
+        onclick: () => (modo === "info" ? escolherInfo(g, c) : escolher(g, c)),
       }, el("span", { class: "hash" }, "#"), c.nome, c.id === atual ? " ✓" : "")));
       if (!canais || !canais.length) $("detalheModal").textContent = "O bot não vê nenhum canal de texto aqui.";
     } catch (e) {
       $("detalheModal").textContent = e.message;
+    }
+  }
+
+  async function escolherInfo(g, c) {
+    $("detalheModal").textContent = "Salvando...";
+    for (const b of $("listaCanais").querySelectorAll("button")) b.disabled = true;
+    try {
+      await chamar("info_canal", { guild_id: g.id, channel_id: c.id });
+      fecharModal();
+      aviso(`Pronto! O /info agora funciona só em #${c.nome}.`);
+      carregar();
+    } catch (e) {
+      $("detalheModal").textContent = "Não deu certo: " + e.message;
+      for (const b of $("listaCanais").querySelectorAll("button")) b.disabled = false;
     }
   }
 
