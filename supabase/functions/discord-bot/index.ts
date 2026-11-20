@@ -24,6 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
+const VERSAO_BOT = "2026-11-20.3";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -897,7 +898,6 @@ async function interacaoDiscord(req: Request) {
     emSegundoPlano(registrarComandos(String(i.application_id)));
   }
   if (i.type === 4) return await sugestoes(i);          // sugestoes enquanto digita (atalho /info secao item)
-  emSegundoPlano(atualizarTrello());                    // tenta manter a copia do Trello em dia
 
   // Tudo e respondido DIRETO (sem trabalho em segundo plano): o Discord espera ate 3 s.
   const soParaMim = (content: string) => json({ type: 4, data: { content, flags: 64 } });
@@ -944,6 +944,39 @@ async function interacaoDiscord(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
+  // Diagnostico publico do /info (sem segredos): .../discord-bot?diag=info
+  if (req.method === "GET" && url.searchParams.get("diag") === "info") {
+    const r: Record<string, unknown> = { versao: VERSAO_BOT };
+    const medir = async (nome: string, f: () => Promise<unknown>) => {
+      const t0 = performance.now();
+      try { r[nome] = await f(); } catch (e) { r[nome] = "ERRO " + (e instanceof Error ? e.message : String(e)); }
+      r[nome + "_ms"] = Math.round(performance.now() - t0);
+    };
+    await medir("chave_publica", async () => (hexBytes(Deno.env.get("DISCORD_PUBLIC_KEY") ?? "")?.length ?? 0) + " bytes");
+    await medir("ed25519_nativo", async () => {
+      const b = hexBytes(Deno.env.get("DISCORD_PUBLIC_KEY") ?? "");
+      if (!b) return "sem chave";
+      const k = await crypto.subtle.importKey("raw", b, { name: "Ed25519" }, false, ["verify"]);
+      return await crypto.subtle.verify({ name: "Ed25519" }, k, new Uint8Array(64), new Uint8Array(1)) ? "?" : "funciona";
+    });
+    await medir("menu_secoes", async () => {
+      const m = await menuSecoes();
+      return { menus: m.components.length, bytes: JSON.stringify(m).length, exemplo: (m.components[0] as any)?.components?.[0]?.options?.slice(0, 2) };
+    });
+    await medir("sugestoes_Ma", async () => (await (await sugestoes({ data: { options: [{ name: "secao", value: "Ma", focused: true }] } })).json()));
+    await medir("menu_itens_magics", async () => {
+      const { data } = await supa.from("trello_listas").select("id").ilike("nome", "Magics").maybeSingle();
+      const m = await menuItens(data?.id ?? "", 0);
+      return { linhas: m.components.length, bytes: JSON.stringify(m).length };
+    });
+    await medir("comandos_registrados", async () => {
+      const appId = Deno.env.get("DISCORD_CLIENT_ID");
+      const rr = await fetch(`${API}/applications/${appId}/commands`, { headers: { Authorization: comoBot() } });
+      const lista = await rr.json();
+      return Array.isArray(lista) ? lista.map((c: any) => ({ nome: c.name, opcoes: (c.options ?? []).map((o: any) => `${o.name}${o.required ? "*" : ""}`) })) : lista;
+    });
+    return json(r);
+  }
   // Teste/forcar a copia do Trello pelo navegador: .../discord-bot?trello=atualizar
   if (req.method === "GET" && url.searchParams.get("trello") === "atualizar") {
     try {
