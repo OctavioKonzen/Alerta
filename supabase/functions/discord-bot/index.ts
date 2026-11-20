@@ -24,7 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
-const VERSAO_BOT = "2026-11-20.7";   // muda a cada publicacao (para saber qual versao esta no ar)
+const VERSAO_BOT = "2026-11-20.8";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -648,6 +648,7 @@ async function assinaturaDiscordValida(req: Request, corpo: string) {
 // ---------- copia do Trello ----------
 type CartaoTrello = {
   id: string; name: string; desc?: string; idList: string; pos?: number; shortLink?: string;
+  labels?: { name?: string; color?: string }[];
   attachments?: { url?: string; mimeType?: string; pos?: number }[];
 };
 
@@ -675,6 +676,15 @@ function converterTexto(desc: string, nomePorLink: Map<string, string>) {
   return t;
 }
 
+// Raridade marcada como etiqueta colorida no Trello (ex.: "Mythic", "Unobtainable")
+const RARIDADES = ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Divine", "Secret", "Exotic", "Unobtainable"];
+function raridadeDaEtiqueta(labels: { name?: string }[]) {
+  for (const r of RARIDADES) {
+    if (labels.some((l) => (l.name ?? "").trim().toLowerCase() === r.toLowerCase())) return r;
+  }
+  return null;
+}
+
 async function atualizarTrello(forcar = false) {
   const { data: est } = await supa.from("trello_estado").select("*").eq("id", 1).maybeSingle();
   const agora = Date.now();
@@ -684,7 +694,7 @@ async function atualizarTrello(forcar = false) {
   if (erroEstado) throw new Error("tabela trello_estado: " + erroEstado.message + " (o SQL 0012 foi rodado?)");
   try {
     const url = `https://api.trello.com/1/boards/${TRELLO_QUADRO}?fields=name&lists=open&list_fields=name,pos` +
-      `&cards=open&card_fields=name,desc,idList,pos,shortLink&card_attachments=true&card_attachment_fields=url,mimeType,pos`;
+      `&cards=open&card_fields=name,desc,idList,pos,shortLink,labels&card_attachments=true&card_attachment_fields=url,mimeType,pos`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`Trello respondeu ${r.status}`);
     const quadro = await r.json() as { lists: { id: string; name: string; pos: number }[]; cards: CartaoTrello[] };
@@ -692,6 +702,7 @@ async function atualizarTrello(forcar = false) {
     const listas = quadro.lists.map((l) => ({ id: l.id, nome: l.name.trim(), pos: l.pos }));
     const cartoes = quadro.cards.map((c) => ({
       id: c.id, id_lista: c.idList, nome: c.name.trim(), pos: c.pos ?? 0, short_link: c.shortLink ?? null,
+      raridade: raridadeDaEtiqueta(c.labels ?? []),
       texto: converterTexto(c.desc ?? "", nomePorLink),
       imagens: (c.attachments ?? [])
         .filter((a) => (a.mimeType ?? "").startsWith("image/") && a.url)
@@ -699,8 +710,15 @@ async function atualizarTrello(forcar = false) {
     }));
     const { error: erroListas } = await supa.from("trello_listas").upsert(listas);
     if (erroListas) throw new Error("salvar secoes: " + erroListas.message);
+    let semRaridade = false;
     for (let i = 0; i < cartoes.length; i += 200) {
-      const { error } = await supa.from("trello_cartoes").upsert(cartoes.slice(i, i + 200));
+      let lote: Record<string, unknown>[] = cartoes.slice(i, i + 200);
+      if (semRaridade) lote = lote.map(({ raridade: _r, ...resto }) => resto);
+      let { error } = await supa.from("trello_cartoes").upsert(lote);
+      if (error && /raridade/.test(error.message) && !semRaridade) {   // SQL 0013 ainda nao rodado
+        semRaridade = true;
+        ({ error } = await supa.from("trello_cartoes").upsert(lote.map(({ raridade: _r, ...resto }) => resto)));
+      }
       if (error) throw new Error("salvar cartoes: " + error.message);
     }
     // tira o que saiu do Trello
@@ -896,6 +914,7 @@ function emojiRaridade(nome: string) {
   if (n.startsWith("secret")) return "⚫";
   if (n.startsWith("exotic")) return "🌈";
   if (n.startsWith("divine")) return "✨";
+  if (n.startsWith("unobtainable")) return "🚫";
   return "📊";
 }
 
@@ -905,9 +924,9 @@ function emojiRaridade(nome: string) {
 async function menuItens(idLista: string, pagina: number) {
   const [{ data: lista }, { data: cards }] = await Promise.all([
     supa.from("trello_listas").select("nome").eq("id", idLista).maybeSingle(),
-    supa.from("trello_cartoes").select("id, nome").eq("id_lista", idLista).order("pos"),
+    supa.from("trello_cartoes").select("*").eq("id_lista", idLista).order("pos"),
   ]);
-  const todos = cards ?? [];
+  const todos = (cards ?? []) as { id: string; nome: string; raridade?: string | null }[];
   type Bloco = { titulo: string; emoji?: string; itens: { id: string; nome: string; cab?: boolean }[] };
   const blocos: Bloco[] = [];
   // So separa por raridade quando a secao comeca com um cabecalho de raridade com %
@@ -923,6 +942,13 @@ async function menuItens(idLista: string, pagina: number) {
         if (!atual) { atual = { titulo: "Geral", emoji: "📄", itens: [] }; blocos.push(atual); }
         atual.itens.push(c);
       }
+    }
+  } else if (todos.some((c) => c.raridade)) {
+    // raridade pela etiqueta colorida do Trello, na ordem Common > ... > Unobtainable, e "Outros" no fim
+    const ordem = [...RARIDADES, ""];
+    for (const r of ordem) {
+      const itens = todos.filter((c) => (c.raridade ?? "") === r);
+      if (itens.length) blocos.push({ titulo: r || "Outros", emoji: r ? emojiRaridade(r) : "📄", itens });
     }
   } else {
     blocos.push({ titulo: "", itens: todos });
