@@ -24,7 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
-const VERSAO_BOT = "2026-11-20.3";   // muda a cada publicacao (para saber qual versao esta no ar)
+const VERSAO_BOT = "2026-11-20.4";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -885,10 +885,31 @@ async function postarCartao(i: Record<string, any>, idOuNome: string) {
 
 let comandosEnviados = false;
 
+async function anotar(texto: string) {
+  try {
+    await supa.from("discord_estados").insert({
+      estado: `diario-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, tipo: "diario", erro: texto.slice(0, 900),
+      pronto: true, expira_em: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    });
+  } catch { /* */ }
+}
+
 async function interacaoDiscord(req: Request) {
+  const inicio = performance.now();
+  const resposta = await interacaoDiscordReal(req);
+  const ms = Math.round(performance.now() - inicio);
+  let resumo = "";
+  try { resumo = (await resposta.clone().text()).slice(0, 300); } catch { /* */ }
+  await anotar(`${new Date().toISOString()} | ${resposta.status} | ${ms} ms | ${ultimoTipo} | ${resumo}`);
+  return resposta;
+}
+let ultimoTipo = "";
+
+async function interacaoDiscordReal(req: Request) {
   const corpo = await req.text();
   if (!(await assinaturaDiscordValida(req, corpo))) return new Response("assinatura invalida", { status: 401 });
   const i = JSON.parse(corpo);
+  ultimoTipo = `tipo ${i.type} ${i.data?.name ?? i.data?.custom_id ?? ""}`;
   if (i.type === 1) {                                   // PING: ao salvar o endereco no Developer Portal
     emSegundoPlano(registrarComandos(String(i.application_id)));
     return json({ type: 1 });
@@ -968,6 +989,20 @@ Deno.serve(async (req) => {
       const { data } = await supa.from("trello_listas").select("id").ilike("nome", "Magics").maybeSingle();
       const m = await menuItens(data?.id ?? "", 0);
       return { linhas: m.components.length, bytes: JSON.stringify(m).length };
+    });
+    if (url.searchParams.get("registrar") === "1") {
+      await medir("registrar_agora", async () => {
+        const appId = Deno.env.get("DISCORD_CLIENT_ID");
+        const rr = await fetch(`${API}/applications/${appId}/commands`, {
+          method: "PUT", headers: { Authorization: comoBot(), "Content-Type": "application/json" }, body: JSON.stringify(COMANDOS),
+        });
+        return `${rr.status} ${rr.ok ? "ok" : (await rr.text()).slice(0, 300)}`;
+      });
+    }
+    await medir("diario", async () => {
+      const { data } = await supa.from("discord_estados").select("estado, erro").eq("tipo", "diario")
+        .order("estado", { ascending: false }).limit(15);
+      return (data ?? []).map((d) => d.erro);
     });
     await medir("comandos_registrados", async () => {
       const appId = Deno.env.get("DISCORD_CLIENT_ID");
