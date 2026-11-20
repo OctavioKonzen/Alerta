@@ -633,7 +633,8 @@ async function atualizarTrello(forcar = false) {
   const agora = Date.now();
   if (!forcar && est?.atualizado_em && agora - new Date(est.atualizado_em).getTime() < TRELLO_ATUALIZAR_MIN * 60_000) return;
   if (est?.atualizando_desde && agora - new Date(est.atualizando_desde).getTime() < 3 * 60_000) return;   // ja tem outra
-  await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: new Date().toISOString() });
+  const { error: erroEstado } = await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: new Date().toISOString() });
+  if (erroEstado) throw new Error("tabela trello_estado: " + erroEstado.message + " (o SQL 0012 foi rodado?)");
   try {
     const url = `https://api.trello.com/1/boards/${TRELLO_QUADRO}?fields=name&lists=open&list_fields=name,pos` +
       `&cards=open&card_fields=name,desc,idList,pos,shortLink&card_attachments=true&card_attachment_fields=url,mimeType,pos`;
@@ -649,7 +650,8 @@ async function atualizarTrello(forcar = false) {
         .filter((a) => (a.mimeType ?? "").startsWith("image/") && a.url)
         .sort((a, b) => (a.pos ?? 0) - (b.pos ?? 0)).slice(0, 4).map((a) => a.url),
     }));
-    await supa.from("trello_listas").upsert(listas);
+    const { error: erroListas } = await supa.from("trello_listas").upsert(listas);
+    if (erroListas) throw new Error("salvar secoes: " + erroListas.message);
     for (let i = 0; i < cartoes.length; i += 200) {
       const { error } = await supa.from("trello_cartoes").upsert(cartoes.slice(i, i + 200));
       if (error) throw new Error("salvar cartoes: " + error.message);
@@ -915,6 +917,20 @@ async function interacaoDiscord(req: Request) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   const url = new URL(req.url);
+  // Teste/forcar a copia do Trello pelo navegador: .../discord-bot?trello=atualizar
+  if (req.method === "GET" && url.searchParams.get("trello") === "atualizar") {
+    try {
+      await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: null });   // destrava
+      await atualizarTrello(true);
+      const [{ count: secoes }, { count: itens }] = await Promise.all([
+        supa.from("trello_listas").select("id", { count: "exact", head: true }),
+        supa.from("trello_cartoes").select("id", { count: "exact", head: true }),
+      ]);
+      return textoPc(`OK! Trello carregado: ${secoes ?? 0} secoes e ${itens ?? 0} itens. Ja pode usar o /info.`);
+    } catch (e) {
+      return textoPc("ERRO ao carregar o Trello: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
   if (req.method === "GET") return await retornoLogin(url);
   if (req.method !== "POST") return json({ erro: "metodo invalido" }, 405);
   if (req.headers.get("x-signature-ed25519")) return await interacaoDiscord(req);   // comandos do Discord
