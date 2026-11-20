@@ -208,6 +208,9 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
 
   // Frases procuradas pelo PC (ficam na conta)
   if (qual === "frases") {
+    // Os PCs pedem as frases a cada 1 minuto: aproveita para manter o Trello do /info em dia
+    // (so baixa de novo se a copia tiver mais de 30 minutos).
+    await atualizarTrello().catch((e) => console.error("trello:", e));
     await supa.rpc("garantir_frases", { p_user: userId });
     const { data } = await supa.from("frases").select("id, texto")
       .eq("user_id", userId).order("created_at").order("id");
@@ -847,15 +850,6 @@ async function postarCartao(i: Record<string, any>, idOuNome: string) {
   return true;
 }
 
-async function protegido(i: Record<string, any>, tarefa: () => Promise<void>) {
-  try {
-    await tarefa();
-  } catch (e) {
-    console.error("/info:", e);
-    await editarOriginal(i, { content: "Deu um erro no /info: " + (e instanceof Error ? e.message : String(e)), components: [], embeds: [] });
-  }
-}
-
 let comandosEnviados = false;
 
 async function interacaoDiscord(req: Request) {
@@ -871,58 +865,48 @@ async function interacaoDiscord(req: Request) {
     emSegundoPlano(registrarComandos(String(i.application_id)));
   }
   if (i.type === 4) return await sugestoes(i);          // sugestoes enquanto digita (atalho /info secao item)
-  emSegundoPlano(atualizarTrello());                    // mantem a copia do Trello em dia
+  emSegundoPlano(atualizarTrello());                    // tenta manter a copia do Trello em dia
 
-  // /info: responde NA HORA ("pensando...") e monta tudo em segundo plano (o Discord so espera 3 s)
-  if (i.type === 2 && i.data?.name === "info") {
-    if (!i.guild_id) return json({ type: 4, data: { content: "Use o /info dentro de um servidor.", flags: 64 } });
-    const { o } = opcoes(i);
-    const direto = Boolean(limpa(o.item ?? ""));       // atalho: /info secao item -> mostra direto no chat
-    emSegundoPlano(protegido(i, async () => {
+  // Tudo e respondido DIRETO (sem trabalho em segundo plano): o Discord espera ate 3 s.
+  const soParaMim = (content: string) => json({ type: 4, data: { content, flags: 64 } });
+  const cartaoNoChat = async (idOuNome: string) => {
+    const msgs = await mensagensDoCartao(idOuNome);
+    if (!msgs) return soParaMim("Nao encontrei esse item. Use /info e escolha pelos menus.");
+    for (const m of msgs.slice(1)) emSegundoPlano(novaMensagem(i, m));   // continuacao de textos muito longos
+    return json({ type: 4, data: msgs[0] });                             // aparece no chat para todos
+  };
+  try {
+    if (i.type === 2 && i.data?.name === "info") {
+      if (!i.guild_id) return soParaMim("Use o /info dentro de um servidor.");
       const { data: restrito } = await supa.from("discord_info_canal").select("channel_id")
         .eq("guild_id", String(i.guild_id)).maybeSingle();
       if (restrito && restrito.channel_id !== String(i.channel_id ?? i.channel?.id)) {
-        await editarOriginal(i, { content: `Neste servidor o /info funciona so em <#${restrito.channel_id}>.` });
-        return;
+        return soParaMim(`Neste servidor o /info funciona so em <#${restrito.channel_id}>.`);
       }
-      const { count } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
-      if (!count) {
-        await atualizarTrello(true).catch((e) => console.error(e));
-        const { count: depois } = await supa.from("trello_cartoes").select("id", { count: "exact", head: true });
-        if (!depois) {
-          await editarOriginal(i, { content: "Estou carregando as informacoes do Trello. Tente de novo em 1 minuto." });
-          return;
-        }
+      const { o } = opcoes(i);
+      if (limpa(o.item ?? "")) return await cartaoNoChat(o.item);
+      const menu = /^[0-9a-f]{24}$/.test(o.secao ?? "") ? await menuItens(o.secao, 0) : await menuSecoes();
+      if (!menu.components.length) {
+        return soParaMim("As informacoes do Trello ainda nao foram carregadas. No site, clique em \"Carregar o Trello agora\".");
       }
-      if (direto) {
-        const msgs = await mensagensDoCartao(o.item);
-        if (!msgs) { await editarOriginal(i, { content: "Nao encontrei esse item." }); return; }
-        await editarOriginal(i, msgs[0]);
-        for (const m of msgs.slice(1)) await novaMensagem(i, m);
-      } else {
-        await editarOriginal(i, /^[0-9a-f]{24}$/.test(o.secao ?? "") ? await menuItens(o.secao, 0) : await menuSecoes());
-      }
-    }));
-    return json({ type: 5, data: direto ? {} : { flags: 64 } });   // menus so para quem digitou
-  }
-
-  // Cliques nos menus/botoes do /info
-  if (i.type === 3) {
-    const id = String(i.data?.custom_id ?? "");
-    const valor = String(i.data?.values?.[0] ?? "");
-    emSegundoPlano(protegido(i, async () => {
-      if (id.startsWith("info_sec:")) await editarOriginal(i, await menuItens(valor, 0));
-      else if (id.startsWith("info_pag:")) {
+      return json({ type: 4, data: { ...menu, flags: 64 } });              // menus so para quem digitou
+    }
+    if (i.type === 3) {                                                   // cliques nos menus/botoes
+      const id = String(i.data?.custom_id ?? "");
+      const valor = String(i.data?.values?.[0] ?? "");
+      if (id.startsWith("info_sec:")) return json({ type: 7, data: await menuItens(valor, 0) });
+      if (id.startsWith("info_pag:")) {
         const [, idLista, pag] = id.split(":");
-        await editarOriginal(i, await menuItens(idLista, Number(pag) || 0));
-      } else if (id === "info_voltar") await editarOriginal(i, await menuSecoes());
-      else if (id.startsWith("info_item:")) {
-        if (!(await postarCartao(i, valor))) await novaMensagem(i, { content: "Nao encontrei esse item.", flags: 64 });
+        return json({ type: 7, data: await menuItens(idLista, Number(pag) || 0) });
       }
-    }));
-    return json({ type: 6 });                           // "ok, ja vou atualizar"
+      if (id === "info_voltar") return json({ type: 7, data: await menuSecoes() });
+      if (id.startsWith("info_item:")) return await cartaoNoChat(valor);
+    }
+    return soParaMim("Comando desconhecido.");
+  } catch (e) {
+    console.error("/info:", e);
+    return soParaMim("Deu um erro no /info: " + (e instanceof Error ? e.message : String(e)));
   }
-  return json({ type: 4, data: { content: "Comando desconhecido.", flags: 64 } });
 }
 
 Deno.serve(async (req) => {
