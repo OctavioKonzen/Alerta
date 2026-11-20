@@ -24,7 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
-const VERSAO_BOT = "2026-11-20.6";   // muda a cada publicacao (para saber qual versao esta no ar)
+const VERSAO_BOT = "2026-11-20.7";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -884,43 +884,80 @@ async function menuSecoes() {
   };
 }
 
-// Menu dos itens de uma secao, com paginas de 100 (4 menus de 25 + botoes)
+// Cor de cada raridade (igual ao jeito do Trello de separar por raridade)
+function emojiRaridade(nome: string) {
+  const n = nome.toLowerCase();
+  if (n.startsWith("uncommon")) return "🟢";
+  if (n.startsWith("common")) return "⚪";
+  if (n.startsWith("rare")) return "🔵";
+  if (n.startsWith("epic")) return "🟣";
+  if (n.startsWith("legendary")) return "🟡";
+  if (n.startsWith("mythic")) return "🔴";
+  if (n.startsWith("secret")) return "⚫";
+  if (n.startsWith("exotic")) return "🌈";
+  if (n.startsWith("divine")) return "✨";
+  return "📊";
+}
+
+// Menu dos itens de uma secao.
+// Se a secao tem raridades (cartoes "Common - 46%", "Rare - ..."), cada raridade vira um menu,
+// na mesma ordem do Trello. Sem raridades: menus de 25 em 25. Ate 4 menus por pagina.
 async function menuItens(idLista: string, pagina: number) {
   const [{ data: lista }, { data: cards }] = await Promise.all([
     supa.from("trello_listas").select("nome").eq("id", idLista).maybeSingle(),
     supa.from("trello_cartoes").select("id, nome").eq("id_lista", idLista).order("pos"),
   ]);
-  // Grupo de cada item = ultimo "cabecalho" (ex.: "Common - 49%") que veio antes dele
-  let grupo = "";
-  const todos = (cards ?? []).map((c) => {
-    const cab = CABECALHO.test(c.nome);
-    if (cab) grupo = c.nome;
-    return { ...c, cab, grupo: cab ? "" : grupo };
-  });
-  const POR_PAGINA = 100;
-  const paginas = Math.max(1, Math.ceil(todos.length / POR_PAGINA));
-  const p = Math.min(Math.max(0, pagina), paginas - 1);
-  const daPagina = todos.slice(p * POR_PAGINA, (p + 1) * POR_PAGINA);
-  const icone = lista ? (ICONES[norm(lista.nome)] ?? CATEGORIAS[categoriaDe(lista.nome)].emoji) : "📄";
-  const linhas: unknown[] = [];
-  for (let k = 0; k < daPagina.length; k += 25) {
-    const parte = daPagina.slice(k, k + 25);
-    const ini = p * POR_PAGINA + k + 1;
-    const fim = ini + parte.length - 1;
-    const primeiro = parte[0].nome.slice(0, 18), ultimo = parte[parte.length - 1].nome.slice(0, 18);
-    linhas.push({
-      type: 1,
-      components: [{
-        type: 3, custom_id: `info_item:${idLista}:${p}:${k}`,
-        placeholder: todos.length > 25 ? `${ini}–${fim}: ${primeiro} … ${ultimo}`.slice(0, 150) : "Escolha o item",
-        options: parte.map((c) => ({
-          label: c.nome.slice(0, 100), value: c.id,
-          description: c.cab ? "Informacoes do grupo" : (c.grupo ? c.grupo.slice(0, 100) : undefined),
-          emoji: c.cab ? { name: "📊" } : undefined,
-        })),
-      }],
-    });
+  const todos = cards ?? [];
+  type Bloco = { titulo: string; emoji?: string; itens: { id: string; nome: string; cab?: boolean }[] };
+  const blocos: Bloco[] = [];
+  // So separa por raridade quando a secao comeca com um cabecalho de raridade com %
+  // (ex.: "Common - 46%"), como no Trello. Evita confundir itens como "Divine Nullifier".
+  const porRaridade = todos.length > 0 && CABECALHO.test(todos[0].nome) && /\d\s*%/.test(todos[0].nome);
+  if (porRaridade) {
+    let atual: Bloco | null = null;
+    for (const c of todos) {
+      if (CABECALHO.test(c.nome)) {
+        atual = { titulo: c.nome, emoji: emojiRaridade(c.nome), itens: [{ ...c, cab: true }] };
+        blocos.push(atual);
+      } else {
+        if (!atual) { atual = { titulo: "Geral", emoji: "📄", itens: [] }; blocos.push(atual); }
+        atual.itens.push(c);
+      }
+    }
+  } else {
+    blocos.push({ titulo: "", itens: todos });
   }
+  // cada menu do Discord aceita ate 25 opcoes: raridades grandes viram (1/2), (2/2)...
+  const menus: { titulo: string; emoji?: string; itens: Bloco["itens"] }[] = [];
+  for (const b of blocos) {
+    const partes = Math.ceil(b.itens.length / 25) || 1;
+    for (let k = 0; k < partes; k++) {
+      const itens = b.itens.slice(k * 25, (k + 1) * 25);
+      if (!itens.length) continue;
+      let titulo = b.titulo;
+      if (!titulo) {
+        titulo = todos.length > 25 ? `${itens[0].nome.slice(0, 22)} … ${itens[itens.length - 1].nome.slice(0, 22)}` : "Escolha o item";
+      } else if (partes > 1) titulo += ` (${k + 1}/${partes})`;
+      menus.push({ titulo, emoji: b.emoji, itens });
+    }
+  }
+  const POR_PAGINA = 4;
+  const paginas = Math.max(1, Math.ceil(menus.length / POR_PAGINA));
+  const p = Math.min(Math.max(0, pagina), paginas - 1);
+  const daPagina = menus.slice(p * POR_PAGINA, (p + 1) * POR_PAGINA);
+  const icone = lista ? (ICONES[norm(lista.nome)] ?? CATEGORIAS[categoriaDe(lista.nome)].emoji) : "📄";
+  const linhas: unknown[] = daPagina.map((m, k) => ({
+    type: 1,
+    components: [{
+      type: 3, custom_id: `info_item:${idLista}:${p}:${k}`,
+      placeholder: `${m.emoji ? m.emoji + "  " : ""}${m.titulo}`.slice(0, 150),
+      options: m.itens.map((c) => ({
+        label: (c.cab ? "Sobre esta raridade" : c.nome).slice(0, 100), value: c.id,
+        description: c.cab ? c.nome.slice(0, 100) : undefined,
+        emoji: c.cab ? { name: "📊" } : (m.emoji ? { name: m.emoji } : undefined),
+      })),
+    }],
+  }));
   const botoes = [{ type: 2, style: 2, label: "Categorias", emoji: { name: "↩️" }, custom_id: "info_voltar" }];
   if (paginas > 1) {
     botoes.push({ type: 2, style: 1, label: "Anterior", emoji: { name: "◀️" }, custom_id: `info_pag:${idLista}:${p - 1}`, disabled: p === 0 } as never);
