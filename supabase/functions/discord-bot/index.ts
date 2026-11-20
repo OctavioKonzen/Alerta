@@ -289,6 +289,17 @@ async function acao(userId: string, corpo: Record<string, unknown>) {
     return { ok: true, total: linhas.length };
   }
 
+  // Carregar o Trello agora (botao do site): mostra o resultado ou o erro exato
+  if (qual === "trello_atualizar") {
+    await supa.from("trello_estado").upsert({ id: 1, atualizando_desde: null });
+    await atualizarTrello(true);
+    const [{ count: secoes }, { count: itens }] = await Promise.all([
+      supa.from("trello_listas").select("id", { count: "exact", head: true }),
+      supa.from("trello_cartoes").select("id", { count: "exact", head: true }),
+    ]);
+    return { ok: true, secoes: secoes ?? 0, itens: itens ?? 0 };
+  }
+
   // Canal onde o comando /info funciona (so administrador; channel_id vazio = qualquer canal)
   if (qual === "info_canal") {
     const guildId = String(corpo.guild_id);
@@ -961,7 +972,7 @@ Deno.serve(async (req) => {
         await supa.from("sessoes_web").delete().eq("token_hash", await sha256(sessaoWeb));
         return json({ ok: true });
       }
-      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "info_canal", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
+      if (!["painel", "canais", "escolher", "remover", "participar", "participar_todos", "desligar", "info_canal", "trello_atualizar", "frases", "frase_add", "frase_del"].includes(qual)) return json({ erro: "acao invalida" }, 403);
       return json(await acao(dono, corpo));
     }
 

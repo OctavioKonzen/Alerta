@@ -452,7 +452,20 @@
         `O /info agora funciona em qualquer canal de ${g.nome}.`) }, "Liberar em todos") : null);
     return el("div", { class: "info-bloco" },
       el("div", { class: "detalhe" }, "Comando /info (Trello do Clover Retribution): funciona ", el("b", {}, onde)),
-      botoes);
+      botoes,
+      el("button", { class: "btn", onclick: carregarTrello }, "Carregar o Trello agora"));
+  }
+
+  async function carregarTrello(ev) {
+    const b = ev.currentTarget; const texto = b.textContent;
+    b.disabled = true; b.textContent = "Carregando o Trello...";
+    try {
+      const r = await chamar("trello_atualizar");
+      aviso(`Trello carregado: ${r.secoes} seções e ${r.itens} itens. O /info já pode ser usado.`);
+    } catch (e) {
+      aviso("Erro ao carregar o Trello: " + e.message, true);
+    }
+    b.disabled = false; b.textContent = texto;
   }
 
   async function acaoServidor(acao, g, botao, msgOk) {
