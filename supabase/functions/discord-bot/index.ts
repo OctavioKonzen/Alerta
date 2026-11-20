@@ -24,7 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const NOME_FUNCAO = "discord-bot";
-const VERSAO_BOT = "2026-11-20.5";   // muda a cada publicacao (para saber qual versao esta no ar)
+const VERSAO_BOT = "2026-11-20.6";   // muda a cada publicacao (para saber qual versao esta no ar)
 const VOLTAR_APP = "alertaroblox://discord";
 const SITE = "https://octaviokonzen.github.io/Alerta/";   // painel do bot (GitHub Pages)
 const DIAS_SESSAO_WEB = 30;
@@ -826,7 +826,33 @@ async function mensagensDoCartao(idOuNome: string) {
   });
 }
 
-// Menu das secoes (ate 25 opcoes por menu; o Discord deixa 5 menus por mensagem)
+// ---------- organizacao dos menus ----------
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+const CATEGORIAS: { nome: string; emoji: string; listas: string[] }[] = [
+  { nome: "Informacoes gerais", emoji: "📘", listas: ["General Information", "Game Mechanics", "New Player Assistance", "Magic Knights", "Credits"] },
+  { nome: "Personagem e magia", emoji: "✨", listas: ["Grimoires", "Magics", "Races", "Traits", "Families", "Skill Tree System", "Mana Skin", "Face Markings", "Titles", "Arcane Spells", "Spirits", "Devils"] },
+  { nome: "Equipamentos e itens", emoji: "⚔️", listas: ["Weapon Classes", "Weapons", "Armors", "Accessories", "Enchantments", "Misc Items", "Professions"] },
+  { nome: "Mundo e combate", emoji: "🗺️", listas: ["Quests", "NPCs", "Elites / Mini Bosses", "Raids", "Dungeons", "Grimoire Gauntlet"] },
+  { nome: "Eventos e atualizacoes", emoji: "🎉", listas: [] },   // + qualquer secao de evento/atualizacao
+];
+const ICONES: Record<string, string> = {
+  generalinformation: "ℹ️", gamemechanics: "⚙️", newplayerassistance: "🆕", magicknights: "🛡️", credits: "👥",
+  grimoires: "📖", magics: "🔮", races: "🧬", traits: "🧠", families: "👪", skilltreesystem: "🌳", manaskin: "💠",
+  facemarkings: "🎭", titles: "🏷️", arcanespells: "🪄", spirits: "👻", devils: "😈",
+  weaponclasses: "🎯", weapons: "🗡️", armors: "🦺", accessories: "💍", enchantments: "✨", miscitems: "🎒", professions: "⛏️",
+  quests: "📜", npcs: "🧑", elitesminibosses: "👹", raids: "🐉", dungeons: "🏰", grimoiregauntlet: "🥊",
+};
+function categoriaDe(nomeLista: string) {
+  const n = norm(nomeLista);
+  const k = CATEGORIAS.findIndex((c) => c.listas.some((l) => norm(l) === n));
+  if (k >= 0) return k;
+  if (/event|update|halloween|valentine|christmas|xmas|easter|anniversary|tribute|season|summer|winter/i.test(nomeLista)) return 4;
+  return 0;
+}
+// Cartoes que sao "cabecalho" de grupo dentro da secao (ex.: "Common - 49%", "Legendary")
+const CABECALHO = /^(common|uncommon|rare|epic|legendary|mythic|mythical|secret|exotic|divine|unique|limited|special)\b/i;
+
+// Menu das secoes: um menu por categoria (o Discord deixa ate 5 menus por mensagem)
 async function menuSecoes() {
   const [{ data: listas }, idsLista] = await Promise.all([
     supa.from("trello_listas").select("id, nome").order("pos"),
@@ -834,23 +860,26 @@ async function menuSecoes() {
   ]);
   const qtd = new Map<string, number>();
   for (const id of idsLista) qtd.set(id, (qtd.get(id) ?? 0) + 1);
-  const ls = (listas ?? []).filter((l) => (qtd.get(l.id) ?? 0) > 0);
+  const grupos: { id: string; nome: string }[][] = CATEGORIAS.map(() => []);
+  for (const l of listas ?? []) if ((qtd.get(l.id) ?? 0) > 0) grupos[categoriaDe(l.nome)].push(l);
   const linhas = [];
-  for (let k = 0; k < ls.length && linhas.length < 5; k += 25) {
-    const grupo = ls.slice(k, k + 25);
+  for (let k = 0; k < CATEGORIAS.length; k++) {
+    const g = grupos[k].slice(0, 25);
+    if (!g.length) continue;
+    const cat = CATEGORIAS[k];
     linhas.push({
       type: 1,
       components: [{
-        type: 3, custom_id: `info_sec:${k}`,
-        placeholder: ls.length > 25 ? `Secoes (${k + 1} a ${k + grupo.length})` : "Escolha a secao",
-        options: grupo.map((l) => ({
+        type: 3, custom_id: `info_sec:${k}`, placeholder: `${cat.emoji}  ${cat.nome}`,
+        options: g.map((l) => ({
           label: l.nome.slice(0, 100), value: l.id, description: `${qtd.get(l.id)} item(ns)`,
+          emoji: { name: ICONES[norm(l.nome)] ?? cat.emoji },
         })),
       }],
     });
   }
   return {
-    content: "**Clover Retribution** · escolha a secao:",
+    content: "📚 **Clover Retribution** · abra uma categoria e escolha a secao:",
     embeds: [], components: linhas,
   };
 }
@@ -861,32 +890,45 @@ async function menuItens(idLista: string, pagina: number) {
     supa.from("trello_listas").select("nome").eq("id", idLista).maybeSingle(),
     supa.from("trello_cartoes").select("id, nome").eq("id_lista", idLista).order("pos"),
   ]);
-  const todos = cards ?? [];
+  // Grupo de cada item = ultimo "cabecalho" (ex.: "Common - 49%") que veio antes dele
+  let grupo = "";
+  const todos = (cards ?? []).map((c) => {
+    const cab = CABECALHO.test(c.nome);
+    if (cab) grupo = c.nome;
+    return { ...c, cab, grupo: cab ? "" : grupo };
+  });
   const POR_PAGINA = 100;
   const paginas = Math.max(1, Math.ceil(todos.length / POR_PAGINA));
   const p = Math.min(Math.max(0, pagina), paginas - 1);
   const daPagina = todos.slice(p * POR_PAGINA, (p + 1) * POR_PAGINA);
+  const icone = lista ? (ICONES[norm(lista.nome)] ?? CATEGORIAS[categoriaDe(lista.nome)].emoji) : "📄";
   const linhas: unknown[] = [];
   for (let k = 0; k < daPagina.length; k += 25) {
-    const grupo = daPagina.slice(k, k + 25);
+    const parte = daPagina.slice(k, k + 25);
     const ini = p * POR_PAGINA + k + 1;
+    const fim = ini + parte.length - 1;
+    const primeiro = parte[0].nome.slice(0, 18), ultimo = parte[parte.length - 1].nome.slice(0, 18);
     linhas.push({
       type: 1,
       components: [{
         type: 3, custom_id: `info_item:${idLista}:${p}:${k}`,
-        placeholder: todos.length > 25 ? `Itens ${ini} a ${ini + grupo.length - 1}` : "Escolha o item",
-        options: grupo.map((c) => ({ label: c.nome.slice(0, 100), value: c.id })),
+        placeholder: todos.length > 25 ? `${ini}–${fim}: ${primeiro} … ${ultimo}`.slice(0, 150) : "Escolha o item",
+        options: parte.map((c) => ({
+          label: c.nome.slice(0, 100), value: c.id,
+          description: c.cab ? "Informacoes do grupo" : (c.grupo ? c.grupo.slice(0, 100) : undefined),
+          emoji: c.cab ? { name: "📊" } : undefined,
+        })),
       }],
     });
   }
-  const botoes = [{ type: 2, style: 2, label: "◀ Secoes", custom_id: "info_voltar" }];
+  const botoes = [{ type: 2, style: 2, label: "Categorias", emoji: { name: "↩️" }, custom_id: "info_voltar" }];
   if (paginas > 1) {
-    botoes.push({ type: 2, style: 2, label: "◀ Anterior", custom_id: `info_pag:${idLista}:${p - 1}`, disabled: p === 0 } as never);
-    botoes.push({ type: 2, style: 2, label: "Proxima ▶", custom_id: `info_pag:${idLista}:${p + 1}`, disabled: p >= paginas - 1 } as never);
+    botoes.push({ type: 2, style: 1, label: "Anterior", emoji: { name: "◀️" }, custom_id: `info_pag:${idLista}:${p - 1}`, disabled: p === 0 } as never);
+    botoes.push({ type: 2, style: 1, label: "Proxima", emoji: { name: "▶️" }, custom_id: `info_pag:${idLista}:${p + 1}`, disabled: p >= paginas - 1 } as never);
   }
   linhas.push({ type: 1, components: botoes });
   return {
-    content: `**${lista?.nome ?? "Secao"}** · ${todos.length} item(ns)` + (paginas > 1 ? ` · pagina ${p + 1} de ${paginas}` : "") +
+    content: `${icone} **${lista?.nome ?? "Secao"}** · ${todos.length} item(ns)` + (paginas > 1 ? ` · pagina ${p + 1} de ${paginas}` : "") +
       "\nEscolha o item para mostrar no chat:",
     embeds: [], components: linhas,
   };
