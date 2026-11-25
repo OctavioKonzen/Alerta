@@ -24,6 +24,7 @@ As configuracoes ficam em %APPDATA%\\AlertaRoblox (config.json e alerta.log).
 import ctypes
 import getpass
 import glob
+import hashlib
 import json
 import os
 import platform
@@ -39,6 +40,7 @@ import tkinter as tk
 import urllib.error
 import urllib.request
 import webbrowser
+from collections import OrderedDict
 from difflib import SequenceMatcher
 
 
@@ -528,6 +530,66 @@ def selecionar_area(pai, ao_terminar):
 _leitor = None
 _trava_leitor = threading.Lock()
 
+LIMITE_TEXTO = 150   # pixel mais claro que isso conta como "letra" (o fundo do chat e escuro)
+
+
+def mascara_texto(gray):
+    """So as letras (pixels claros); o cenario escuro atras do chat some."""
+    return (gray > LIMITE_TEXTO).astype(np.uint8)
+
+
+class LeitorComMemoria:
+    """Acha as linhas de texto e so le (reconhece) as que ainda nao conhece."""
+
+    def __init__(self, motor, tamanho=600):
+        self.motor = motor
+        self.memoria = OrderedDict()
+        self.tamanho = tamanho
+
+    @staticmethod
+    def assinatura(recorte_gray):
+        """Impressao digital da linha: so as letras, recortadas e reduzidas (tolera 1-2 px de diferenca)."""
+        m = mascara_texto(recorte_gray)
+        ys, xs = np.nonzero(m)
+        if len(xs) < 8:
+            return None
+        m = m[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+        h, w = m.shape
+        alvo_h = 10
+        alvo_w = max(4, min(400, round(w * alvo_h / max(h, 1))))
+        peq = cv2.resize(m * 255, (alvo_w, alvo_h), interpolation=cv2.INTER_AREA) > 96
+        return hashlib.blake2b(np.packbits(peq).tobytes() + bytes([alvo_w % 256, alvo_w // 256]),
+                               digest_size=12).digest()
+
+    def ler(self, gray):
+        img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        caixas = self.motor(img, use_cls=False, use_rec=False)[0] or []
+        caixas = sorted(caixas, key=lambda c: (min(p[1] for p in c), min(p[0] for p in c)))
+        linhas = []
+        H, W = gray.shape
+        for c in caixas:
+            pts = np.array(c)
+            x0, y0 = np.floor(pts.min(axis=0)).astype(int)
+            x1, y1 = np.ceil(pts.max(axis=0)).astype(int)
+            x0, y0 = max(0, x0 - 2), max(0, y0 - 2)
+            x1, y1 = min(W, x1 + 2), min(H, y1 + 2)
+            if x1 - x0 < 6 or y1 - y0 < 6:
+                continue
+            chave = self.assinatura(gray[y0:y1, x0:x1])
+            if chave is not None and chave in self.memoria:
+                self.memoria.move_to_end(chave)
+                linhas.append(self.memoria[chave])
+                continue
+            res = self.motor(img[y0:y1, x0:x1], use_det=False, use_cls=False)[0] or []
+            texto = " ".join(str(r[0]) for r in res if r and r[0]).strip()
+            if chave is not None:
+                self.memoria[chave] = texto
+                if len(self.memoria) > self.tamanho:
+                    self.memoria.popitem(last=False)
+            if texto:
+                linhas.append(texto)
+        return "\n".join(linhas)
+
 
 def criar_leitor():
     """Escolhe o leitor de texto disponivel: RapidOCR ou Tesseract (so cria uma vez)."""
@@ -549,7 +611,7 @@ def _criar_leitor():
             except Exception:
                 continue
 
-        def ler_rapid(gray, motor=motor):
+        def ler_inteiro(gray, motor=motor):
             img = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
             try:
                 res = motor(img, use_cls=False)   # chat e texto reto: sem detector de inclinacao
@@ -560,6 +622,16 @@ def _criar_leitor():
                 return "\n".join(str(item[1]) for item in itens)
             txts = getattr(res, "txts", None)     # versao nova
             return "\n".join(txts) if txts else ""
+
+        rapido = LeitorComMemoria(motor)
+
+        def ler_rapid(gray):
+            # Le linha por linha e lembra das linhas ja lidas: quando o chat rola,
+            # so a linha nova e lida (o resto vem da memoria). Se der erro, le tudo.
+            try:
+                return rapido.ler(gray)
+            except Exception:
+                return ler_inteiro(gray)
 
         _leitor = ("RapidOCR", ler_rapid)
         return _leitor
@@ -805,10 +877,11 @@ class Monitor:
                     quadro = capturar(sct, regiao)
                     # Miniatura para comparar: se a tela nao mudou, nao precisa ler de novo
                     # (o leitor de texto e a parte pesada; o chat fica parado quase sempre).
-                    mini = cv2.resize(quadro.max(axis=2), None, fx=0.25, fy=0.25,
+                    # So as letras contam: o cenario do jogo se mexendo atras do chat nao dispara leitura.
+                    mini = cv2.resize(mascara_texto(quadro.max(axis=2)) * 255, None, fx=0.25, fy=0.25,
                                       interpolation=cv2.INTER_AREA).astype(np.int16)
                     igual = (anterior is not None and anterior.shape == mini.shape
-                             and float(np.abs(mini - anterior).mean()) < 1.5 and pulos < 30)
+                             and float(np.abs(mini - anterior).mean()) < 2.0 and pulos < 30)
                     if igual:
                         texto, pulos = texto_anterior, pulos + 1
                     else:
