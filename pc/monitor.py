@@ -774,33 +774,46 @@ class _PONTO(ctypes.Structure):
     _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
 
 
+class _ULTIMA_ENTRADA(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+
+_meu_ultimo_toque = {"tick": 0}
+
+
 def manter_chat_aberto(regiao):
-    """Experimental: manda a janela do Roblox um "mouse em cima do chat" e logo depois
-    devolve a posicao real do mouse. O cursor de verdade nao se move."""
+    """Experimental: o Roblox so mantem o chat visivel com o MOUSE DE VERDADE em cima dele.
+    Quando voce esta parado (15 s sem mexer no mouse/teclado) e o Roblox esta na frente,
+    leva o cursor ate o chat, da um mexidinho e devolve para onde estava (menos de 0,1 s)."""
     try:
         u = ctypes.windll.user32
+        k = ctypes.windll.kernel32
     except Exception:
         return False
     try:
         hwnd = u.FindWindowW(None, "Roblox")
-        if not hwnd or u.IsIconic(hwnd):
+        if not hwnd or u.IsIconic(hwnd) or u.GetForegroundWindow() != hwnd:
+            return False                      # so com o Roblox na frente
+        ult = _ULTIMA_ENTRADA(ctypes.sizeof(_ULTIMA_ENTRADA), 0)
+        if not u.GetLastInputInfo(ctypes.byref(ult)):
             return False
-        WM_MOUSEMOVE = 0x0200
-
-        def mandar(x_tela, y_tela):
-            p = _PONTO(int(x_tela), int(y_tela))
-            u.ScreenToClient(hwnd, ctypes.byref(p))
-            lparam = (p.y & 0xFFFF) << 16 | (p.x & 0xFFFF)
-            u.PostMessageW(hwnd, WM_MOUSEMOVE, 0, lparam)
-
-        cx = regiao["left"] + regiao["width"] // 2
-        cy = regiao["top"] + regiao["height"] // 2
+        agora = k.GetTickCount() & 0xFFFFFFFF
+        # a ultima "entrada" pode ter sido o nosso proprio toque: isso nao conta como voce mexendo
+        ultima_sua = ult.dwTime if ult.dwTime > _meu_ultimo_toque["tick"] + 500 else 0
+        if ultima_sua and (agora - ultima_sua) & 0xFFFFFFFF < 15000:
+            return False                      # voce esta jogando: nao mexe
         real = _PONTO()
         u.GetCursorPos(ctypes.byref(real))
-        for dx in (0, 3, 0):                 # um "mexidinho" sobre o chat
-            mandar(cx + dx, cy)
-            time.sleep(0.02)
-        mandar(real.x, real.y)               # volta para onde o seu mouse esta de verdade
+        cx = regiao["left"] + regiao["width"] // 2
+        cy = regiao["top"] + regiao["height"] // 2
+        u.SetCursorPos(int(cx), int(cy))
+        time.sleep(0.03)
+        u.SetCursorPos(int(cx) + 3, int(cy))
+        time.sleep(0.03)
+        u.SetCursorPos(int(cx), int(cy))
+        time.sleep(0.02)
+        u.SetCursorPos(real.x, real.y)        # volta para onde estava
+        _meu_ultimo_toque["tick"] = k.GetTickCount() & 0xFFFFFFFF
         return True
     except Exception:
         return False
@@ -959,7 +972,7 @@ class Monitor:
                                 self.ao_detectar(nome)
                     elif agora - visto_em[nome] >= SUMIU_SEG:
                         visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
-                if MANTER_CHAT and time.time() - ultimo_toque_chat >= 10:
+                if MANTER_CHAT and time.time() - ultimo_toque_chat >= 8:
                     ultimo_toque_chat = time.time()
                     manter_chat_aberto(regiao)
                 parar.wait(espera)
@@ -1244,7 +1257,8 @@ class App:
         opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
         opcoes["manter_chat"] = MANTER_CHAT
         salvar_config(opcoes=opcoes)
-        log("Manter o chat aberto:", "ligado (a cada 10 s avisa o Roblox que o mouse esta no chat)" if MANTER_CHAT else "desligado")
+        log("Manter o chat aberto:", "ligado (quando voce fica 15 s parado com o Roblox na frente, "
+            "o mouse vai ate o chat e volta a cada 8 s)" if MANTER_CHAT else "desligado")
 
     def _trocar_debug(self):
         self.monitor.debug = bool(self.chave_debug.get())
