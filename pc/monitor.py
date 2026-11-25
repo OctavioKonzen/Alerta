@@ -72,7 +72,6 @@ CODIGO_SERVIDOR = ""     # codigo (ou link) do servidor, digitado na janela "Jog
 MAPAS = ("Normal", "Jungle")
 
 ATUALIZAR_SOZINHO = True # baixa e instala versoes novas sozinho
-MANTER_CHAT = False      # experimental: avisa o Roblox que o mouse esta no chat, para ele nao sumir
 
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
 SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
@@ -109,7 +108,6 @@ OPCOES = {
     "mapa": "MAPA",
     "codigo_servidor": "CODIGO_SERVIDOR",
     "atualizar_sozinho": "ATUALIZAR_SOZINHO",
-    "manter_chat": "MANTER_CHAT",
 }
 
 try:  # evita problemas de escala (DPI) no Windows
@@ -769,56 +767,46 @@ def alerta_tela(pai, nome):
     verificar_f8()
 
 
+# ----------------------------- log do Roblox ------------------------------
+class LeitorDeLog:
+    """Acompanha o arquivo de log mais novo do Roblox e devolve so as linhas novas.
+    Se o jogo gravar a mensagem do evento no log, o alerta sai mesmo com o chat escondido."""
+
+    def __init__(self):
+        self.arquivo = None
+        self.posicao = 0
+
+    def linhas_novas(self):
+        logs = []
+        for pasta in pastas_log_roblox():
+            logs += glob.glob(os.path.join(pasta, "*.log"))
+        if not logs:
+            return []
+        arquivo = max(logs, key=os.path.getmtime)
+        tamanho = os.path.getsize(arquivo)
+        if arquivo != self.arquivo or tamanho < self.posicao:
+            # arquivo novo (abriu o jogo de novo): comeca do fim, sem reler o passado
+            self.arquivo, self.posicao = arquivo, tamanho
+            return []
+        if tamanho == self.posicao:
+            return []
+        with open(arquivo, "rb") as f:
+            f.seek(self.posicao)
+            bruto = f.read(min(tamanho - self.posicao, 2_000_000))
+        self.posicao += len(bruto)
+        return bruto.decode("utf-8", errors="ignore").splitlines()
+
+
+def frase_na_linha_do_log(linha, chaves):
+    """Devolve o nome da frase encontrada na linha do log (texto exato, sem erro de leitura)."""
+    norm = normalizar(linha)
+    for nome, chave in chaves.items():
+        if chave and chave in norm:
+            return nome
+    return None
+
+
 # ----------------------------- monitor -------------------------------------
-class _PONTO(ctypes.Structure):
-    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
-
-
-class _ULTIMA_ENTRADA(ctypes.Structure):
-    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
-
-
-_meu_ultimo_toque = {"tick": 0}
-
-
-def manter_chat_aberto(regiao):
-    """Experimental: o Roblox so mantem o chat visivel com o MOUSE DE VERDADE em cima dele.
-    Quando voce esta parado (15 s sem mexer no mouse/teclado) e o Roblox esta na frente,
-    leva o cursor ate o chat, da um mexidinho e devolve para onde estava (menos de 0,1 s)."""
-    try:
-        u = ctypes.windll.user32
-        k = ctypes.windll.kernel32
-    except Exception:
-        return False
-    try:
-        hwnd = u.FindWindowW(None, "Roblox")
-        if not hwnd or u.IsIconic(hwnd) or u.GetForegroundWindow() != hwnd:
-            return False                      # so com o Roblox na frente
-        ult = _ULTIMA_ENTRADA(ctypes.sizeof(_ULTIMA_ENTRADA), 0)
-        if not u.GetLastInputInfo(ctypes.byref(ult)):
-            return False
-        agora = k.GetTickCount() & 0xFFFFFFFF
-        # a ultima "entrada" pode ter sido o nosso proprio toque: isso nao conta como voce mexendo
-        ultima_sua = ult.dwTime if ult.dwTime > _meu_ultimo_toque["tick"] + 500 else 0
-        if ultima_sua and (agora - ultima_sua) & 0xFFFFFFFF < 15000:
-            return False                      # voce esta jogando: nao mexe
-        real = _PONTO()
-        u.GetCursorPos(ctypes.byref(real))
-        cx = regiao["left"] + regiao["width"] // 2
-        cy = regiao["top"] + regiao["height"] // 2
-        u.SetCursorPos(int(cx), int(cy))
-        time.sleep(0.03)
-        u.SetCursorPos(int(cx) + 3, int(cy))
-        time.sleep(0.03)
-        u.SetCursorPos(int(cx), int(cy))
-        time.sleep(0.02)
-        u.SetCursorPos(real.x, real.y)        # volta para onde estava
-        _meu_ultimo_toque["tick"] = k.GetTickCount() & 0xFFFFFFFF
-        return True
-    except Exception:
-        return False
-
-
 def roblox_aberto():
     """True se a janela do Roblox existe e nao esta minimizada (fora do Windows: sempre True)."""
     try:
@@ -904,7 +892,11 @@ class Monitor:
         log("Monitorando a area escolhida.")
 
         prioridade_baixa_nesta_thread()
-        ultimo_toque_chat = 0.0
+        leitor_log = LeitorDeLog()
+        try:
+            leitor_log.linhas_novas()            # marca o ponto de partida
+        except Exception:
+            pass
         anterior, texto_anterior, pulos = None, "", 0
         notas_cache, texto_cache = {}, None
         espera = INTERVALO
@@ -972,9 +964,19 @@ class Monitor:
                                 self.ao_detectar(nome)
                     elif agora - visto_em[nome] >= SUMIU_SEG:
                         visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
-                if MANTER_CHAT and time.time() - ultimo_toque_chat >= 8:
-                    ultimo_toque_chat = time.time()
-                    manter_chat_aberto(regiao)
+                # Tambem procura as frases no log do Roblox (vale mesmo com o chat escondido)
+                try:
+                    for linha_log in leitor_log.linhas_novas():
+                        nome = frase_na_linha_do_log(linha_log, chaves)
+                        if nome and time.time() - _ultimos_alertas.get(chaves[nome], 0.0) > COOLDOWN:
+                            _ultimos_alertas[chaves[nome]] = time.time()
+                            visivel[nome] = True
+                            trecho = linha_log.split("]")[-1].strip()[:300] or MENSAGENS[nome]
+                            log(f"Detectado no log do Roblox: {trecho}")
+                            enviar_alerta(MENSAGENS[nome], trecho)
+                except Exception as erro:
+                    if self.debug:
+                        log("Erro lendo o log do Roblox:", erro)
                 parar.wait(espera)
 
 
@@ -1174,13 +1176,6 @@ class App:
         self.chave_debug = ctk.CTkSwitch(acoes, text="Ver leitura", font=fonte(12), text_color=COR["fraco"],
                                          progress_color=COR["destaque"], command=self._trocar_debug)
         self.chave_debug.pack(side="right")
-        # dentro do cartao "Area da tela": segura o chat do Roblox aberto (experimental)
-        self.chave_chat = ctk.CTkSwitch(self.passo_area["cartao"], text="Manter o chat aberto", font=fonte(12),
-                                        text_color=COR["fraco"], progress_color=COR["destaque"],
-                                        command=self._trocar_manter_chat)
-        if MANTER_CHAT:
-            self.chave_chat.select()
-        self.chave_chat.pack(anchor="w", padx=14, pady=(0, 12))
 
         # Registro
         caixa = cartao(r)
@@ -1249,16 +1244,6 @@ class App:
         passo["num"].configure(text="✓" if feito else passo["numero"],
                                fg_color=COR["ok"] if feito else COR["sec2"])
         passo["estado"].configure(text=texto, text_color=COR["ok"] if feito else COR["fraco"])
-
-    def _trocar_manter_chat(self):
-        global MANTER_CHAT
-        MANTER_CHAT = bool(self.chave_chat.get())
-        dados = ler_config()
-        opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
-        opcoes["manter_chat"] = MANTER_CHAT
-        salvar_config(opcoes=opcoes)
-        log("Manter o chat aberto:", "ligado (quando voce fica 15 s parado com o Roblox na frente, "
-            "o mouse vai ate o chat e volta a cada 8 s)" if MANTER_CHAT else "desligado")
 
     def _trocar_debug(self):
         self.monitor.debug = bool(self.chave_debug.get())
