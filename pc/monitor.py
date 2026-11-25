@@ -72,6 +72,7 @@ CODIGO_SERVIDOR = ""     # codigo (ou link) do servidor, digitado na janela "Jog
 MAPAS = ("Normal", "Jungle")
 
 ATUALIZAR_SOZINHO = True # baixa e instala versoes novas sozinho
+MANTER_CHAT = False      # experimental: avisa o Roblox que o mouse esta no chat, para ele nao sumir
 
 # --- NUVEM (preenchido por quem publica o app; nao precisa mexer) ---
 SUPABASE_URL = "https://vtyxkowxnesclwtndbog.supabase.co"
@@ -108,6 +109,7 @@ OPCOES = {
     "mapa": "MAPA",
     "codigo_servidor": "CODIGO_SERVIDOR",
     "atualizar_sozinho": "ATUALIZAR_SOZINHO",
+    "manter_chat": "MANTER_CHAT",
 }
 
 try:  # evita problemas de escala (DPI) no Windows
@@ -768,6 +770,42 @@ def alerta_tela(pai, nome):
 
 
 # ----------------------------- monitor -------------------------------------
+class _PONTO(ctypes.Structure):
+    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+
+def manter_chat_aberto(regiao):
+    """Experimental: manda a janela do Roblox um "mouse em cima do chat" e logo depois
+    devolve a posicao real do mouse. O cursor de verdade nao se move."""
+    try:
+        u = ctypes.windll.user32
+    except Exception:
+        return False
+    try:
+        hwnd = u.FindWindowW(None, "Roblox")
+        if not hwnd or u.IsIconic(hwnd):
+            return False
+        WM_MOUSEMOVE = 0x0200
+
+        def mandar(x_tela, y_tela):
+            p = _PONTO(int(x_tela), int(y_tela))
+            u.ScreenToClient(hwnd, ctypes.byref(p))
+            lparam = (p.y & 0xFFFF) << 16 | (p.x & 0xFFFF)
+            u.PostMessageW(hwnd, WM_MOUSEMOVE, 0, lparam)
+
+        cx = regiao["left"] + regiao["width"] // 2
+        cy = regiao["top"] + regiao["height"] // 2
+        real = _PONTO()
+        u.GetCursorPos(ctypes.byref(real))
+        for dx in (0, 3, 0):                 # um "mexidinho" sobre o chat
+            mandar(cx + dx, cy)
+            time.sleep(0.02)
+        mandar(real.x, real.y)               # volta para onde o seu mouse esta de verdade
+        return True
+    except Exception:
+        return False
+
+
 def roblox_aberto():
     """True se a janela do Roblox existe e nao esta minimizada (fora do Windows: sempre True)."""
     try:
@@ -853,6 +891,7 @@ class Monitor:
         log("Monitorando a area escolhida.")
 
         prioridade_baixa_nesta_thread()
+        ultimo_toque_chat = 0.0
         anterior, texto_anterior, pulos = None, "", 0
         notas_cache, texto_cache = {}, None
         espera = INTERVALO
@@ -920,6 +959,9 @@ class Monitor:
                                 self.ao_detectar(nome)
                     elif agora - visto_em[nome] >= SUMIU_SEG:
                         visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
+                if MANTER_CHAT and time.time() - ultimo_toque_chat >= 10:
+                    ultimo_toque_chat = time.time()
+                    manter_chat_aberto(regiao)
                 parar.wait(espera)
 
 
@@ -1119,6 +1161,13 @@ class App:
         self.chave_debug = ctk.CTkSwitch(acoes, text="Ver leitura", font=fonte(12), text_color=COR["fraco"],
                                          progress_color=COR["destaque"], command=self._trocar_debug)
         self.chave_debug.pack(side="right")
+        # dentro do cartao "Area da tela": segura o chat do Roblox aberto (experimental)
+        self.chave_chat = ctk.CTkSwitch(self.passo_area["cartao"], text="Manter o chat aberto", font=fonte(12),
+                                        text_color=COR["fraco"], progress_color=COR["destaque"],
+                                        command=self._trocar_manter_chat)
+        if MANTER_CHAT:
+            self.chave_chat.select()
+        self.chave_chat.pack(anchor="w", padx=14, pady=(0, 12))
 
         # Registro
         caixa = cartao(r)
@@ -1159,7 +1208,7 @@ class App:
         estado.pack(fill="x", padx=14, pady=(2, 10))
         b = botao(c, texto_botao, comando, height=34)
         b.pack(fill="x", padx=14, pady=(0, 14))
-        return {"num": num, "numero": numero, "estado": estado, "botao": b}
+        return {"num": num, "numero": numero, "estado": estado, "botao": b, "cartao": c}
 
     def _erro_na_janela(self, tipo, valor, tb):
         """Qualquer erro dentro da janela aparece no quadro Atividade (e no alerta.log)."""
@@ -1187,6 +1236,15 @@ class App:
         passo["num"].configure(text="✓" if feito else passo["numero"],
                                fg_color=COR["ok"] if feito else COR["sec2"])
         passo["estado"].configure(text=texto, text_color=COR["ok"] if feito else COR["fraco"])
+
+    def _trocar_manter_chat(self):
+        global MANTER_CHAT
+        MANTER_CHAT = bool(self.chave_chat.get())
+        dados = ler_config()
+        opcoes = dados.get("opcoes") if isinstance(dados.get("opcoes"), dict) else {}
+        opcoes["manter_chat"] = MANTER_CHAT
+        salvar_config(opcoes=opcoes)
+        log("Manter o chat aberto:", "ligado (a cada 10 s avisa o Roblox que o mouse esta no chat)" if MANTER_CHAT else "desligado")
 
     def _trocar_debug(self):
         self.monitor.debug = bool(self.chave_debug.get())
