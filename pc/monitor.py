@@ -831,6 +831,47 @@ def prioridade_baixa_nesta_thread():
 # Quando cada frase foi avisada pela ultima vez (sobrevive aos reinicios do monitor).
 _ultimos_alertas = {}
 
+# Aparicoes ja vistas de cada frase, reconhecidas pela mensagem logo acima no chat
+# (uma linha antiga do historico tem sempre o mesmo vizinho de cima).
+_aparicoes_vistas = {}       # chave da frase -> [(vizinho_normalizado, quando)]
+
+
+def _aparicoes(texto, chave):
+    """Lista o vizinho de cima de cada linha do chat que contem a frase ("" = linha no topo)."""
+    linhas = [l for l in texto.splitlines() if l.strip()]
+    saida = []
+    for i, l in enumerate(linhas):
+        if similaridade(chave, normalizar(l)) >= LIMIAR_TEXTO:
+            if i > 0:
+                saida.append(normalizar(linhas[i - 1])[:80])
+            elif len(linhas) == 1:
+                saida.append("")          # unica linha do chat: pode ser nova
+            # no topo com outras linhas embaixo: e antiga (as novas entram por baixo) -> ignora
+    return saida
+
+
+def _ja_vista(chave, vizinho):
+    for v, _quando in _aparicoes_vistas.get(chave, []):
+        if v == vizinho or (v and vizinho and SequenceMatcher(None, v, vizinho).ratio() >= 0.85):
+            return True
+    return False
+
+
+def aparicoes_novas(texto, chave):
+    """Devolve (vizinhos das aparicoes nunca vistas, se alguma aparicao esta sem vizinho)."""
+    viz = _aparicoes(texto, chave)
+    novas = [v for v in viz if v and not _ja_vista(chave, v)]
+    return novas, any(v == "" for v in viz)
+
+
+def lembrar_aparicoes(texto, chave):
+    agora = time.time()
+    lista = [(v, q) for v, q in _aparicoes_vistas.get(chave, []) if agora - q < 3 * 3600]
+    for v in _aparicoes(texto, chave):
+        if v and not any(v == x for x, _ in lista):
+            lista.append((v, agora))
+    _aparicoes_vistas[chave] = lista[-80:]
+
 class Monitor:
     """Le a tela em segundo plano e manda os alertas."""
 
@@ -883,7 +924,8 @@ class Monitor:
         info = info_roblox()
         log("Jogador:", info["jogador"] or "?", "| Servidor:", info["job_id"] or "?")
 
-        chaves = {n: normalizar(t) for n, t in MENSAGENS.items()}
+        frases = dict(MENSAGENS)                 # lista desta rodada (nao muda no meio)
+        chaves = {n: normalizar(t) for n, t in frases.items()}
         agora0 = time.time()
         # Se ja avisou desta frase ha pouco (mesmo antes de reiniciar), conta como "ja visivel".
         visivel = {n: agora0 - _ultimos_alertas.get(c, 0.0) < COOLDOWN for n, c in chaves.items()}
@@ -954,14 +996,19 @@ class Monitor:
                         log(f"  mensagem {nome}: nota {nota:.2f}")
                     if nota >= LIMIAR_TEXTO:
                         visto_em[nome] = agora
-                        if not visivel[nome] and agora - _ultimos_alertas.get(chave, 0.0) > COOLDOWN:
+                        # Linha antiga que reaparece (o chat sumiu e voltou) nao e evento novo:
+                        # cada aparicao e reconhecida pela mensagem logo acima dela.
+                        novas, sem_vizinho = aparicoes_novas(texto, chave)
+                        evento_novo = bool(novas) or (sem_vizinho and not visivel[nome])
+                        if evento_novo and agora - _ultimos_alertas.get(chave, 0.0) > COOLDOWN:
                             visivel[nome] = True
                             _ultimos_alertas[chave] = agora
                             linha = linha_da_mensagem(texto, chave)
                             log(f"Detectado: {linha} ({nota:.2f})")
-                            enviar_alerta(MENSAGENS[nome], linha)
+                            enviar_alerta(frases[nome], linha)
                             if ALERTA_TELA and self.ao_detectar:
                                 self.ao_detectar(nome)
+                        lembrar_aparicoes(texto, chave)   # toda linha vista fica lembrada
                     elif agora - visto_em[nome] >= SUMIU_SEG:
                         visivel[nome] = False   # sumiu de vez: pode alertar de novo (depois do cooldown)
                 # Tambem procura as frases no log do Roblox (vale mesmo com o chat escondido)
@@ -971,9 +1018,9 @@ class Monitor:
                         if nome and time.time() - _ultimos_alertas.get(chaves[nome], 0.0) > COOLDOWN:
                             _ultimos_alertas[chaves[nome]] = time.time()
                             visivel[nome] = True
-                            trecho = linha_log.split("]")[-1].strip()[:300] or MENSAGENS[nome]
+                            trecho = linha_log.split("]")[-1].strip()[:300] or frases[nome]
                             log(f"Detectado no log do Roblox: {trecho}")
-                            enviar_alerta(MENSAGENS[nome], trecho)
+                            enviar_alerta(frases[nome], trecho)
                 except Exception as erro:
                     if self.debug:
                         log("Erro lendo o log do Roblox:", erro)
